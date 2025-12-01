@@ -20,6 +20,12 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
+// Student pages
+import StudentDashboard from "./pages/student/StudentDashboard";
+import StudentMaterials from "./pages/student/StudentMaterials";
+import StudentAttendance from "./pages/student/StudentAttendance";
+import StudentScores from "./pages/student/StudentScores";
+
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -41,7 +47,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, userRole } = useAuth();
 
   if (isLoading) {
     return (
@@ -51,11 +57,20 @@ function AppRoutes() {
     );
   }
 
+  // Determine default route based on role
+  const getDefaultRoute = () => {
+    if (!isAuthenticated) return "/auth";
+    if (userRole === 'student') return "/student";
+    return "/dashboard";
+  };
+
   return (
     <Routes>
-      <Route path="/auth" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Auth />} />
+      <Route path="/auth" element={isAuthenticated ? <Navigate to={getDefaultRoute()} replace /> : <Auth />} />
       <Route path="/install" element={<Install />} />
-      <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/auth"} replace />} />
+      <Route path="/" element={<Navigate to={getDefaultRoute()} replace />} />
+      
+      {/* Admin/GLV routes */}
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/academic-years" element={<ProtectedRoute><AcademicYears /></ProtectedRoute>} />
       <Route path="/classes" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
@@ -67,6 +82,13 @@ function AppRoutes() {
       <Route path="/materials" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      
+      {/* Student routes */}
+      <Route path="/student" element={<ProtectedRoute><StudentDashboard /></ProtectedRoute>} />
+      <Route path="/student/materials" element={<ProtectedRoute><StudentMaterials /></ProtectedRoute>} />
+      <Route path="/student/attendance" element={<ProtectedRoute><StudentAttendance /></ProtectedRoute>} />
+      <Route path="/student/scores" element={<ProtectedRoute><StudentScores /></ProtectedRoute>} />
+      
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

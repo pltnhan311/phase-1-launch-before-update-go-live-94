@@ -6,9 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { GraduationCap, User, KeyRound, Loader2, Mail } from 'lucide-react';
+import { GraduationCap, User, KeyRound, Loader2, Mail, IdCard } from 'lucide-react';
 import { z } from 'zod';
+import { supabase } from '@/integrations/supabase/client';
 
 const loginSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
@@ -20,14 +22,19 @@ const signupSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
   password: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự'),
   confirmPassword: z.string(),
+  isStudent: z.boolean(),
+  studentId: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: 'Mật khẩu xác nhận không khớp',
   path: ['confirmPassword'],
+}).refine((data) => !data.isStudent || (data.studentId && data.studentId.length > 0), {
+  message: 'Vui lòng nhập mã học viên',
+  path: ['studentId'],
 });
 
 export default function Auth() {
   const navigate = useNavigate();
-  const { signIn, signUp, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, userRole } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   
@@ -40,12 +47,18 @@ export default function Auth() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
+  const [isStudent, setIsStudent] = useState(false);
+  const [studentId, setStudentId] = useState('');
 
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
-      navigate('/dashboard');
+      if (userRole === 'student') {
+        navigate('/student');
+      } else {
+        navigate('/dashboard');
+      }
     }
-  }, [isAuthenticated, authLoading, navigate]);
+  }, [isAuthenticated, authLoading, userRole, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +79,10 @@ export default function Auth() {
     setIsLoading(true);
     
     try {
-      const { error } = await signIn(loginEmail, loginPassword);
+      const { error } = await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password: loginPassword,
+      });
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
           toast.error('Email hoặc mật khẩu không đúng');
@@ -75,7 +91,6 @@ export default function Auth() {
         }
       } else {
         toast.success('Đăng nhập thành công!');
-        navigate('/dashboard');
       }
     } finally {
       setIsLoading(false);
@@ -91,6 +106,8 @@ export default function Auth() {
       email: signupEmail, 
       password: signupPassword,
       confirmPassword: signupConfirmPassword,
+      isStudent,
+      studentId: isStudent ? studentId : undefined,
     });
     
     if (!result.success) {
@@ -103,11 +120,43 @@ export default function Auth() {
       setErrors(fieldErrors);
       return;
     }
+
+    // Verify student ID exists if registering as student
+    if (isStudent && studentId) {
+      const { data: studentData, error: studentError } = await supabase
+        .from('students')
+        .select('id, user_id')
+        .eq('student_id', studentId)
+        .maybeSingle();
+
+      if (studentError || !studentData) {
+        setErrors({ studentId: 'Mã học viên không tồn tại trong hệ thống' });
+        return;
+      }
+
+      if (studentData.user_id) {
+        setErrors({ studentId: 'Mã học viên này đã được liên kết với tài khoản khác' });
+        return;
+      }
+    }
     
     setIsLoading(true);
     
     try {
-      const { error } = await signUp(signupEmail, signupPassword, signupName);
+      const redirectUrl = `${window.location.origin}/`;
+      
+      const { error } = await supabase.auth.signUp({
+        email: signupEmail,
+        password: signupPassword,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            name: signupName,
+            student_id: isStudent ? studentId : null,
+          },
+        },
+      });
+      
       if (error) {
         if (error.message.includes('User already registered')) {
           toast.error('Email này đã được đăng ký');
@@ -116,7 +165,6 @@ export default function Auth() {
         }
       } else {
         toast.success('Đăng ký thành công! Bạn có thể đăng nhập ngay.');
-        navigate('/dashboard');
       }
     } finally {
       setIsLoading(false);
@@ -172,7 +220,7 @@ export default function Auth() {
       </div>
 
       {/* Right side - Auth form */}
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex items-center justify-center p-4 md:p-8">
         <div className="w-full max-w-md animate-fade-in">
           <div className="lg:hidden text-center mb-8">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-accent shadow-lg">
@@ -310,6 +358,41 @@ export default function Auth() {
                       </div>
                       {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
                     </div>
+                    
+                    {/* Student checkbox */}
+                    <div className="flex items-center space-x-2 p-3 rounded-lg bg-muted/50">
+                      <Checkbox
+                        id="is-student"
+                        checked={isStudent}
+                        onCheckedChange={(checked) => setIsStudent(checked === true)}
+                      />
+                      <Label htmlFor="is-student" className="text-sm cursor-pointer">
+                        Tôi là học viên
+                      </Label>
+                    </div>
+                    
+                    {/* Student ID field */}
+                    {isStudent && (
+                      <div className="space-y-2 animate-fade-in">
+                        <Label htmlFor="student-id">Mã học viên</Label>
+                        <div className="relative">
+                          <IdCard className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            id="student-id"
+                            type="text"
+                            placeholder="VD: HS2025001"
+                            value={studentId}
+                            onChange={(e) => setStudentId(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Nhập mã học viên được cung cấp bởi Giáo lý viên
+                        </p>
+                        {errors.studentId && <p className="text-sm text-destructive">{errors.studentId}</p>}
+                      </div>
+                    )}
+                    
                     <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
                       {isLoading ? (
                         <>
