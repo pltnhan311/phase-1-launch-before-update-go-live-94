@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 import Auth from "./pages/Auth";
+import Install from "./pages/Install";
 import Dashboard from "./pages/Dashboard";
 import AcademicYears from "./pages/AcademicYears";
 import Classes from "./pages/Classes";
@@ -53,6 +54,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/auth" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Auth />} />
+      <Route path="/install" element={<Install />} />
       <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/auth"} replace />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/academic-years" element={<ProtectedRoute><AcademicYears /></ProtectedRoute>} />
