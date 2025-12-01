@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Star,
-  UserCheck
+  UserCheck,
+  Home
 } from 'lucide-react';
 
 const menuItems = [
@@ -80,6 +81,31 @@ const menuItems = [
     path: '/settings',
     roles: ['admin']
   },
+  // Student menu items
+  { 
+    icon: Home, 
+    label: 'Trang chủ', 
+    path: '/student',
+    roles: ['student']
+  },
+  { 
+    icon: BookOpen, 
+    label: 'Tài liệu', 
+    path: '/student/materials',
+    roles: ['student']
+  },
+  { 
+    icon: ClipboardCheck, 
+    label: 'Điểm danh', 
+    path: '/student/attendance',
+    roles: ['student']
+  },
+  { 
+    icon: Star, 
+    label: 'Điểm số', 
+    path: '/student/scores',
+    roles: ['student']
+  },
 ];
 
 export function Sidebar() {
@@ -97,14 +123,14 @@ export function Sidebar() {
   return (
     <aside 
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar text-sidebar-foreground transition-all duration-300",
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar text-sidebar-foreground transition-all duration-300 hidden md:block",
         collapsed ? "w-20" : "w-64"
       )}
     >
       {/* Logo */}
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         {!collapsed && (
-          <Link to="/dashboard" className="flex items-center gap-3">
+          <Link to={userRole === 'student' ? '/student' : '/dashboard'} className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg gradient-gold">
               <GraduationCap className="h-6 w-6 text-sidebar-primary-foreground" />
             </div>
