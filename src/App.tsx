@@ -9,9 +9,10 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import AcademicYears from "./pages/AcademicYears";
 import Classes from "./pages/Classes";
+import ClassDetail from "./pages/ClassDetail";
+import Catechists from "./pages/Catechists";
 import Students from "./pages/Students";
 import Attendance from "./pages/Attendance";
-import MassAttendance from "./pages/MassAttendance";
 import Scores from "./pages/Scores";
 import Materials from "./pages/Materials";
 import Reports from "./pages/Reports";
@@ -38,9 +39,10 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/academic-years" element={<ProtectedRoute><AcademicYears /></ProtectedRoute>} />
       <Route path="/classes" element={<ProtectedRoute><Classes /></ProtectedRoute>} />
+      <Route path="/classes/:id" element={<ProtectedRoute><ClassDetail /></ProtectedRoute>} />
+      <Route path="/catechists" element={<ProtectedRoute><Catechists /></ProtectedRoute>} />
       <Route path="/students" element={<ProtectedRoute><Students /></ProtectedRoute>} />
       <Route path="/attendance" element={<ProtectedRoute><Attendance /></ProtectedRoute>} />
-      <Route path="/mass-attendance" element={<ProtectedRoute><MassAttendance /></ProtectedRoute>} />
       <Route path="/scores" element={<ProtectedRoute><Scores /></ProtectedRoute>} />
       <Route path="/materials" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
