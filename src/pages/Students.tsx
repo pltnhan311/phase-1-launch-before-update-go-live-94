@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -29,13 +29,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { mockStudents, mockClasses } from '@/data/mockData';
-import { Student } from '@/types';
-import { Plus, Search, Eye, Pencil, User, Phone, MapPin, Calendar } from 'lucide-react';
+import { useStudents, useCreateStudent, Student } from '@/hooks/useStudents';
+import { useClasses } from '@/hooks/useClasses';
+import { Plus, Search, Eye, Pencil, User, Phone, MapPin, Calendar, Loader2, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Students() {
-  const [students, setStudents] = useState<Student[]>(mockStudents);
+  const { data: students, isLoading } = useStudents();
+  const { data: classes } = useClasses();
+  const createStudent = useCreateStudent();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -44,59 +47,58 @@ export default function Students() {
 
   const [newStudent, setNewStudent] = useState({
     name: '',
-    birthDate: '',
+    birth_date: '',
     gender: 'male' as 'male' | 'female',
-    classId: '',
-    baptismName: '',
+    class_id: '',
+    baptism_name: '',
     phone: '',
-    parentPhone: '',
+    parent_phone: '',
     address: ''
   });
 
-  const filteredStudents = students.filter(student => {
+  const filteredStudents = (students || []).filter(student => {
     const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         student.studentId.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesClass = selectedClass === 'all' || student.classId === selectedClass;
+                         student.student_id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesClass = selectedClass === 'all' || student.class_id === selectedClass;
     return matchesSearch && matchesClass;
   });
 
-  const handleCreateStudent = () => {
-    if (!newStudent.name || !newStudent.birthDate || !newStudent.classId) {
+  const handleCreateStudent = async () => {
+    if (!newStudent.name || !newStudent.birth_date || !newStudent.class_id) {
       toast.error('Vui lòng điền đầy đủ thông tin bắt buộc');
       return;
     }
 
-    const className = mockClasses.find(c => c.id === newStudent.classId)?.name || '';
-    const studentId = `HS2024${String(students.length + 1).padStart(3, '0')}`;
+    const studentId = `HS${new Date().getFullYear()}${String((students?.length || 0) + 1).padStart(3, '0')}`;
 
-    const student: Student = {
-      id: String(students.length + 1),
-      studentId,
+    createStudent.mutate({
+      student_id: studentId,
       name: newStudent.name,
-      birthDate: newStudent.birthDate,
+      birth_date: newStudent.birth_date,
       gender: newStudent.gender,
-      classId: newStudent.classId,
-      className,
-      baptismName: newStudent.baptismName,
-      phone: newStudent.phone,
-      parentPhone: newStudent.parentPhone,
-      address: newStudent.address,
-      enrollmentDate: new Date().toISOString().split('T')[0]
-    };
-
-    setStudents([student, ...students]);
-    setNewStudent({
-      name: '',
-      birthDate: '',
-      gender: 'male',
-      classId: '',
-      baptismName: '',
-      phone: '',
-      parentPhone: '',
-      address: ''
+      class_id: newStudent.class_id,
+      baptism_name: newStudent.baptism_name || null,
+      phone: newStudent.phone || null,
+      parent_phone: newStudent.parent_phone || null,
+      address: newStudent.address || null,
+      enrollment_date: new Date().toISOString().split('T')[0],
+      is_active: true,
+      avatar_url: null,
+    }, {
+      onSuccess: () => {
+        setNewStudent({
+          name: '',
+          birth_date: '',
+          gender: 'male',
+          class_id: '',
+          baptism_name: '',
+          phone: '',
+          parent_phone: '',
+          address: ''
+        });
+        setIsDialogOpen(false);
+      }
     });
-    setIsDialogOpen(false);
-    toast.success('Thêm học viên thành công!');
   };
 
   const formatDate = (dateString: string) => {
@@ -133,7 +135,7 @@ export default function Students() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tất cả lớp</SelectItem>
-                    {mockClasses.map(cls => (
+                    {(classes || []).map(cls => (
                       <SelectItem key={cls.id} value={cls.id}>
                         {cls.name}
                       </SelectItem>
@@ -143,7 +145,7 @@ export default function Students() {
               </div>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="gold">
+                  <Button variant="gold" disabled={!classes || classes.length === 0}>
                     <Plus className="mr-2 h-4 w-4" />
                     Thêm học viên
                   </Button>
@@ -171,8 +173,8 @@ export default function Students() {
                         <Input
                           id="baptismName"
                           placeholder="Giuse"
-                          value={newStudent.baptismName}
-                          onChange={(e) => setNewStudent({ ...newStudent, baptismName: e.target.value })}
+                          value={newStudent.baptism_name}
+                          onChange={(e) => setNewStudent({ ...newStudent, baptism_name: e.target.value })}
                         />
                       </div>
                     </div>
@@ -182,8 +184,8 @@ export default function Students() {
                         <Input
                           id="birthDate"
                           type="date"
-                          value={newStudent.birthDate}
-                          onChange={(e) => setNewStudent({ ...newStudent, birthDate: e.target.value })}
+                          value={newStudent.birth_date}
+                          onChange={(e) => setNewStudent({ ...newStudent, birth_date: e.target.value })}
                         />
                       </div>
                       <div className="space-y-2">
@@ -205,14 +207,14 @@ export default function Students() {
                     <div className="space-y-2">
                       <Label htmlFor="classId">Lớp học *</Label>
                       <Select
-                        value={newStudent.classId}
-                        onValueChange={(value) => setNewStudent({ ...newStudent, classId: value })}
+                        value={newStudent.class_id}
+                        onValueChange={(value) => setNewStudent({ ...newStudent, class_id: value })}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Chọn lớp" />
                         </SelectTrigger>
                         <SelectContent>
-                          {mockClasses.map(cls => (
+                          {(classes || []).map(cls => (
                             <SelectItem key={cls.id} value={cls.id}>
                               {cls.name}
                             </SelectItem>
@@ -235,8 +237,8 @@ export default function Students() {
                         <Input
                           id="parentPhone"
                           placeholder="0901234567"
-                          value={newStudent.parentPhone}
-                          onChange={(e) => setNewStudent({ ...newStudent, parentPhone: e.target.value })}
+                          value={newStudent.parent_phone}
+                          onChange={(e) => setNewStudent({ ...newStudent, parent_phone: e.target.value })}
                         />
                       </div>
                     </div>
@@ -254,8 +256,15 @@ export default function Students() {
                     <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                       Hủy
                     </Button>
-                    <Button onClick={handleCreateStudent}>
-                      Thêm học viên
+                    <Button onClick={handleCreateStudent} disabled={createStudent.isPending}>
+                      {createStudent.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang thêm...
+                        </>
+                      ) : (
+                        'Thêm học viên'
+                      )}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -272,58 +281,74 @@ export default function Students() {
         {/* Students Table */}
         <Card variant="elevated">
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Mã HV</TableHead>
-                  <TableHead>Họ và tên</TableHead>
-                  <TableHead>Tên Thánh</TableHead>
-                  <TableHead>Lớp</TableHead>
-                  <TableHead>Ngày sinh</TableHead>
-                  <TableHead>Giới tính</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStudents.map((student, index) => (
-                  <TableRow 
-                    key={student.id}
-                    className="animate-fade-in"
-                    style={{ animationDelay: `${index * 50}ms` }}
-                  >
-                    <TableCell className="font-mono text-sm">{student.studentId}</TableCell>
-                    <TableCell className="font-medium">{student.name}</TableCell>
-                    <TableCell>{student.baptismName || '-'}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{student.className}</Badge>
-                    </TableCell>
-                    <TableCell>{formatDate(student.birthDate)}</TableCell>
-                    <TableCell>
-                      <Badge variant={student.gender === 'male' ? 'default' : 'gold'}>
-                        {student.gender === 'male' ? 'Nam' : 'Nữ'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => {
-                            setSelectedStudent(student);
-                            setIsDetailOpen(true);
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredStudents.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mã HV</TableHead>
+                    <TableHead>Họ và tên</TableHead>
+                    <TableHead>Tên Thánh</TableHead>
+                    <TableHead>Lớp</TableHead>
+                    <TableHead>Ngày sinh</TableHead>
+                    <TableHead>Giới tính</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredStudents.map((student, index) => (
+                    <TableRow 
+                      key={student.id}
+                      className="animate-fade-in"
+                      style={{ animationDelay: `${index * 50}ms` }}
+                    >
+                      <TableCell className="font-mono text-sm">{student.student_id}</TableCell>
+                      <TableCell className="font-medium">{student.name}</TableCell>
+                      <TableCell>{student.baptism_name || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{student.classes?.name || 'Chưa xếp lớp'}</Badge>
+                      </TableCell>
+                      <TableCell>{formatDate(student.birth_date)}</TableCell>
+                      <TableCell>
+                        <Badge variant={student.gender === 'male' ? 'default' : 'gold'}>
+                          {student.gender === 'male' ? 'Nam' : 'Nữ'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => {
+                              setSelectedStudent(student);
+                              setIsDetailOpen(true);
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Database className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-2">Chưa có học viên nào</p>
+                <p className="text-sm text-muted-foreground">
+                  {!classes || classes.length === 0 
+                    ? 'Hãy tạo lớp học trước khi thêm học viên'
+                    : 'Nhấn "Thêm học viên" để bắt đầu'}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -336,33 +361,31 @@ export default function Students() {
                   <DialogTitle>Hồ sơ học viên</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-6 py-4">
-                  {/* Avatar & Name */}
                   <div className="flex items-center gap-4">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 font-display text-2xl font-bold text-primary">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-2xl font-bold text-primary">
                       {selectedStudent.name.charAt(0)}
                     </div>
                     <div>
-                      <h3 className="font-display text-xl font-semibold">
-                        {selectedStudent.baptismName} {selectedStudent.name}
+                      <h3 className="text-xl font-semibold">
+                        {selectedStudent.baptism_name} {selectedStudent.name}
                       </h3>
-                      <p className="text-sm text-muted-foreground">{selectedStudent.studentId}</p>
+                      <p className="text-sm text-muted-foreground">{selectedStudent.student_id}</p>
                     </div>
                   </div>
 
-                  {/* Info Grid */}
                   <div className="grid gap-4">
                     <div className="flex items-center gap-3 rounded-lg border p-3">
                       <Calendar className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm text-muted-foreground">Ngày sinh</p>
-                        <p className="font-medium">{formatDate(selectedStudent.birthDate)}</p>
+                        <p className="font-medium">{formatDate(selectedStudent.birth_date)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 rounded-lg border p-3">
                       <User className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm text-muted-foreground">Lớp</p>
-                        <p className="font-medium">{selectedStudent.className}</p>
+                        <p className="font-medium">{selectedStudent.classes?.name || 'Chưa xếp lớp'}</p>
                       </div>
                     </div>
                     {selectedStudent.phone && (

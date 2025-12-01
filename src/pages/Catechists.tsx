@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -22,61 +22,64 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { mockUsers, mockClasses } from '@/data/mockData';
-import { User } from '@/types';
-import { Plus, Search, Eye, Pencil, Trash2, Phone, Mail, GraduationCap } from 'lucide-react';
+import { useCatechists, useCreateCatechist, useDeleteCatechist, Catechist } from '@/hooks/useCatechists';
+import { Plus, Search, Eye, Pencil, Trash2, Phone, Mail, GraduationCap, Loader2, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Catechists() {
-  const [catechists, setCatechists] = useState<User[]>(
-    mockUsers.filter(u => u.role === 'glv')
-  );
+  const { data: catechists, isLoading } = useCatechists();
+  const createCatechist = useCreateCatechist();
+  const deleteCatechist = useDeleteCatechist();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedCatechist, setSelectedCatechist] = useState<User | null>(null);
+  const [selectedCatechist, setSelectedCatechist] = useState<Catechist | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const [newCatechist, setNewCatechist] = useState({
     name: '',
     email: '',
-    phone: ''
+    phone: '',
+    baptism_name: '',
+    address: ''
   });
 
-  const filteredCatechists = catechists.filter(cat =>
+  const filteredCatechists = (catechists || []).filter(cat =>
     cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     cat.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getAssignedClasses = (catechistId: string) => {
-    return mockClasses.filter(cls => 
-      cls.catechists.some(c => c.id === catechistId)
-    );
-  };
-
-  const handleCreateCatechist = () => {
-    if (!newCatechist.name || !newCatechist.email) {
-      toast.error('Vui lòng điền đầy đủ thông tin bắt buộc');
+  const handleCreateCatechist = async () => {
+    if (!newCatechist.name) {
+      toast.error('Vui lòng điền họ và tên');
       return;
     }
 
-    const catechist: User = {
-      id: String(Date.now()),
+    createCatechist.mutate({
       name: newCatechist.name,
-      email: newCatechist.email,
-      phone: newCatechist.phone,
-      role: 'glv'
-    };
-
-    setCatechists([...catechists, catechist]);
-    setNewCatechist({ name: '', email: '', phone: '' });
-    setIsDialogOpen(false);
-    toast.success('Thêm Giáo lý viên thành công!');
+      email: newCatechist.email || undefined,
+      phone: newCatechist.phone || undefined,
+      baptism_name: newCatechist.baptism_name || undefined,
+      address: newCatechist.address || undefined,
+    }, {
+      onSuccess: () => {
+        setNewCatechist({ name: '', email: '', phone: '', baptism_name: '', address: '' });
+        setIsDialogOpen(false);
+      }
+    });
   };
 
   const handleDelete = (id: string) => {
-    setCatechists(catechists.filter(c => c.id !== id));
-    toast.success('Đã xóa Giáo lý viên');
+    deleteCatechist.mutate(id);
   };
+
+  const assignedCount = filteredCatechists.filter(c => 
+    c.class_catechists && c.class_catechists.length > 0
+  ).length;
+
+  const unassignedCount = filteredCatechists.filter(c => 
+    !c.class_catechists || c.class_catechists.length === 0
+  ).length;
 
   return (
     <MainLayout 
@@ -93,7 +96,7 @@ export default function Catechists() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Tổng GLV</p>
-                <p className="text-2xl font-bold">{catechists.length}</p>
+                <p className="text-2xl font-bold">{catechists?.length || 0}</p>
               </div>
             </CardContent>
           </Card>
@@ -104,9 +107,7 @@ export default function Catechists() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Đang phụ trách lớp</p>
-                <p className="text-2xl font-bold">
-                  {catechists.filter(c => getAssignedClasses(c.id).length > 0).length}
-                </p>
+                <p className="text-2xl font-bold">{assignedCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -117,9 +118,7 @@ export default function Catechists() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Chưa phân lớp</p>
-                <p className="text-2xl font-bold">
-                  {catechists.filter(c => getAssignedClasses(c.id).length === 0).length}
-                </p>
+                <p className="text-2xl font-bold">{unassignedCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -163,7 +162,16 @@ export default function Catechists() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="catEmail">Email *</Label>
+                      <Label htmlFor="catBaptismName">Tên Thánh</Label>
+                      <Input
+                        id="catBaptismName"
+                        placeholder="Giuse"
+                        value={newCatechist.baptism_name}
+                        onChange={(e) => setNewCatechist({ ...newCatechist, baptism_name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="catEmail">Email</Label>
                       <Input
                         id="catEmail"
                         type="email"
@@ -186,8 +194,15 @@ export default function Catechists() {
                     <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                       Hủy
                     </Button>
-                    <Button onClick={handleCreateCatechist}>
-                      Thêm GLV
+                    <Button onClick={handleCreateCatechist} disabled={createCatechist.isPending}>
+                      {createCatechist.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang thêm...
+                        </>
+                      ) : (
+                        'Thêm GLV'
+                      )}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -204,34 +219,39 @@ export default function Catechists() {
         {/* Catechists Table */}
         <Card variant="elevated">
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Họ và tên</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Số điện thoại</TableHead>
-                  <TableHead>Lớp phụ trách</TableHead>
-                  <TableHead className="text-right">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCatechists.map((catechist, index) => {
-                  const assignedClasses = getAssignedClasses(catechist.id);
-                  return (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredCatechists.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Họ và tên</TableHead>
+                    <TableHead>Tên Thánh</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Số điện thoại</TableHead>
+                    <TableHead>Lớp phụ trách</TableHead>
+                    <TableHead className="text-right">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCatechists.map((catechist, index) => (
                     <TableRow 
                       key={catechist.id}
                       className="animate-fade-in"
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
                       <TableCell className="font-medium">{catechist.name}</TableCell>
-                      <TableCell>{catechist.email}</TableCell>
+                      <TableCell>{catechist.baptism_name || '-'}</TableCell>
+                      <TableCell>{catechist.email || '-'}</TableCell>
                       <TableCell>{catechist.phone || '-'}</TableCell>
                       <TableCell>
-                        {assignedClasses.length > 0 ? (
+                        {catechist.class_catechists && catechist.class_catechists.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
-                            {assignedClasses.map(cls => (
-                              <Badge key={cls.id} variant="secondary">
-                                {cls.name}
+                            {catechist.class_catechists.map(cc => (
+                              <Badge key={cc.id} variant="secondary">
+                                {cc.classes?.name}
                               </Badge>
                             ))}
                           </div>
@@ -265,10 +285,16 @@ export default function Catechists() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Database className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-2">Chưa có giáo lý viên nào</p>
+                <p className="text-sm text-muted-foreground">Nhấn "Thêm GLV" để bắt đầu</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -281,26 +307,28 @@ export default function Catechists() {
                   <DialogTitle>Thông tin Giáo lý viên</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-6 py-4">
-                  {/* Avatar & Name */}
                   <div className="flex items-center gap-4">
                     <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-2xl font-bold text-accent">
                       {selectedCatechist.name.charAt(0)}
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold">{selectedCatechist.name}</h3>
+                      <h3 className="text-xl font-semibold">
+                        {selectedCatechist.baptism_name} {selectedCatechist.name}
+                      </h3>
                       <Badge variant="gold">Giáo lý viên</Badge>
                     </div>
                   </div>
 
-                  {/* Info Grid */}
                   <div className="grid gap-4">
-                    <div className="flex items-center gap-3 rounded-lg border p-3">
-                      <Mail className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Email</p>
-                        <p className="font-medium">{selectedCatechist.email}</p>
+                    {selectedCatechist.email && (
+                      <div className="flex items-center gap-3 rounded-lg border p-3">
+                        <Mail className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm text-muted-foreground">Email</p>
+                          <p className="font-medium">{selectedCatechist.email}</p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     {selectedCatechist.phone && (
                       <div className="flex items-center gap-3 rounded-lg border p-3">
                         <Phone className="h-5 w-5 text-muted-foreground" />
@@ -315,10 +343,10 @@ export default function Catechists() {
                       <div>
                         <p className="text-sm text-muted-foreground">Lớp phụ trách</p>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {getAssignedClasses(selectedCatechist.id).length > 0 ? (
-                            getAssignedClasses(selectedCatechist.id).map(cls => (
-                              <Badge key={cls.id} variant="secondary">
-                                {cls.name}
+                          {selectedCatechist.class_catechists && selectedCatechist.class_catechists.length > 0 ? (
+                            selectedCatechist.class_catechists.map(cc => (
+                              <Badge key={cc.id} variant="secondary">
+                                {cc.classes?.name}
                               </Badge>
                             ))
                           ) : (
