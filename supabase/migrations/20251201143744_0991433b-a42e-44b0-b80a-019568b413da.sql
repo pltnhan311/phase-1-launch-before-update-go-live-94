@@ -1,0 +1,1 @@
+ALTER TABLE public.attendance_sessions ENABLE ROW LEVEL SECURITY
