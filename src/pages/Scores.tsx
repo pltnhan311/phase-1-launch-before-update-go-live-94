@@ -19,9 +19,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { mockClasses, mockStudents, mockScores } from '@/data/mockData';
-import { Star, Save, TrendingUp, Award, BookOpen } from 'lucide-react';
+import { useClasses } from '@/hooks/useClasses';
+import { useStudents } from '@/hooks/useStudents';
+import { Star, Save, TrendingUp, Award, BookOpen, Loader2, Database, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ScoreEntry {
@@ -33,41 +33,35 @@ interface ScoreEntry {
 }
 
 export default function Scores() {
-  const [selectedClass, setSelectedClass] = useState<string>('1');
+  const { data: classes, isLoading: classesLoading } = useClasses();
+  const [selectedClass, setSelectedClass] = useState<string>('');
   const [scoreType, setScoreType] = useState<'presentation' | 'semester1' | 'semester2'>('presentation');
   const [isEditing, setIsEditing] = useState(false);
 
-  const classStudents = mockStudents.filter(s => s.classId === selectedClass);
-  const selectedClassInfo = mockClasses.find(c => c.id === selectedClass);
+  const { data: students, isLoading: studentsLoading } = useStudents(selectedClass || undefined);
 
-  const [scores, setScores] = useState<ScoreEntry[]>(
-    classStudents.map(s => {
-      const studentScores = mockScores.filter(sc => sc.studentId === s.id);
-      return {
-        studentId: s.id,
-        studentName: s.name,
-        presentation: studentScores.find(sc => sc.type === 'presentation')?.score || null,
-        semester1: studentScores.find(sc => sc.type === 'semester1')?.score || null,
-        semester2: studentScores.find(sc => sc.type === 'semester2')?.score || null,
-      };
-    })
-  );
+  const classStudents = students || [];
+  const selectedClassInfo = classes?.find(c => c.id === selectedClass);
+
+  const [scores, setScores] = useState<ScoreEntry[]>([]);
 
   const handleClassChange = (classId: string) => {
     setSelectedClass(classId);
-    const students = mockStudents.filter(s => s.classId === classId);
+    setIsEditing(false);
+  };
+
+  const startEditing = () => {
+    if (!classStudents.length) return;
     setScores(
-      students.map(s => {
-        const studentScores = mockScores.filter(sc => sc.studentId === s.id);
-        return {
-          studentId: s.id,
-          studentName: s.name,
-          presentation: studentScores.find(sc => sc.type === 'presentation')?.score || null,
-          semester1: studentScores.find(sc => sc.type === 'semester1')?.score || null,
-          semester2: studentScores.find(sc => sc.type === 'semester2')?.score || null,
-        };
-      })
+      classStudents.map(s => ({
+        studentId: s.id,
+        studentName: s.name,
+        presentation: null,
+        semester1: null,
+        semester2: null,
+      }))
     );
+    setIsEditing(true);
   };
 
   const handleScoreChange = (studentId: string, value: string) => {
@@ -91,14 +85,6 @@ export default function Scores() {
     setIsEditing(false);
   };
 
-  const calculateAverage = (entry: ScoreEntry): number | null => {
-    const validScores = [entry.presentation, entry.semester1, entry.semester2].filter(
-      (s): s is number => s !== null
-    );
-    if (validScores.length === 0) return null;
-    return Math.round((validScores.reduce((a, b) => a + b, 0) / validScores.length) * 10) / 10;
-  };
-
   const getScoreLabel = (type: typeof scoreType) => {
     switch (type) {
       case 'presentation':
@@ -118,19 +104,7 @@ export default function Scores() {
     return <Badge variant="destructive">{score}</Badge>;
   };
 
-  // Stats
-  const stats = {
-    avgPresentation: scores.filter(s => s.presentation !== null).length > 0
-      ? (scores.reduce((sum, s) => sum + (s.presentation || 0), 0) / scores.filter(s => s.presentation !== null).length).toFixed(1)
-      : '-',
-    avgSemester1: scores.filter(s => s.semester1 !== null).length > 0
-      ? (scores.reduce((sum, s) => sum + (s.semester1 || 0), 0) / scores.filter(s => s.semester1 !== null).length).toFixed(1)
-      : '-',
-    excellent: scores.filter(s => {
-      const avg = calculateAverage(s);
-      return avg !== null && avg >= 8;
-    }).length,
-  };
+  const isLoading = classesLoading || studentsLoading;
 
   return (
     <MainLayout 
@@ -147,7 +121,7 @@ export default function Scores() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">ĐTB Thuyết trình</p>
-                <p className="text-2xl font-bold">{stats.avgPresentation}</p>
+                <p className="text-2xl font-bold">-</p>
               </div>
             </CardContent>
           </Card>
@@ -158,7 +132,7 @@ export default function Scores() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">ĐTB Học kỳ 1</p>
-                <p className="text-2xl font-bold">{stats.avgSemester1}</p>
+                <p className="text-2xl font-bold">-</p>
               </div>
             </CardContent>
           </Card>
@@ -169,7 +143,7 @@ export default function Scores() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Học viên giỏi</p>
-                <p className="text-2xl font-bold">{stats.excellent}</p>
+                <p className="text-2xl font-bold">-</p>
               </div>
             </CardContent>
           </Card>
@@ -183,10 +157,10 @@ export default function Scores() {
                 <label className="text-sm font-medium">Chọn lớp</label>
                 <Select value={selectedClass} onValueChange={handleClassChange}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Chọn lớp để nhập điểm" />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockClasses.map(cls => (
+                    {(classes || []).map(cls => (
                       <SelectItem key={cls.id} value={cls.id}>
                         {cls.name}
                       </SelectItem>
@@ -207,104 +181,134 @@ export default function Scores() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button 
-                variant={isEditing ? 'outline' : 'gold'}
-                onClick={() => setIsEditing(!isEditing)}
-              >
-                {isEditing ? 'Hủy' : 'Nhập điểm'}
-              </Button>
-              {isEditing && (
-                <Button variant="success" onClick={handleSaveScores}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Lưu điểm
-                </Button>
+              {selectedClass && classStudents.length > 0 && (
+                <>
+                  <Button 
+                    variant={isEditing ? 'outline' : 'gold'}
+                    onClick={() => isEditing ? setIsEditing(false) : startEditing()}
+                  >
+                    {isEditing ? 'Hủy' : 'Nhập điểm'}
+                  </Button>
+                  {isEditing && (
+                    <Button variant="success" onClick={handleSaveScores}>
+                      <Save className="mr-2 h-4 w-4" />
+                      Lưu điểm
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           </CardContent>
         </Card>
 
         {/* Scores Table */}
-        <Card variant="elevated">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Bảng điểm - {selectedClassInfo?.name}
-            </CardTitle>
-            <CardDescription>
-              {isEditing ? `Đang nhập ${getScoreLabel(scoreType)}` : 'Xem điểm tổng hợp'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[50px]">STT</TableHead>
-                  <TableHead>Họ và tên</TableHead>
-                  <TableHead className="text-center">Thuyết trình</TableHead>
-                  <TableHead className="text-center">HK1</TableHead>
-                  <TableHead className="text-center">HK2</TableHead>
-                  <TableHead className="text-center">ĐTB</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {scores.map((entry, index) => (
-                  <TableRow key={entry.studentId}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell className="font-medium">{entry.studentName}</TableCell>
-                    <TableCell className="text-center">
-                      {isEditing && scoreType === 'presentation' ? (
-                        <Input
-                          type="number"
-                          min="0"
-                          max="10"
-                          step="0.1"
-                          className="w-20 mx-auto text-center"
-                          value={entry.presentation ?? ''}
-                          onChange={(e) => handleScoreChange(entry.studentId, e.target.value)}
-                        />
-                      ) : (
-                        getScoreBadge(entry.presentation)
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {isEditing && scoreType === 'semester1' ? (
-                        <Input
-                          type="number"
-                          min="0"
-                          max="10"
-                          step="0.1"
-                          className="w-20 mx-auto text-center"
-                          value={entry.semester1 ?? ''}
-                          onChange={(e) => handleScoreChange(entry.studentId, e.target.value)}
-                        />
-                      ) : (
-                        getScoreBadge(entry.semester1)
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {isEditing && scoreType === 'semester2' ? (
-                        <Input
-                          type="number"
-                          min="0"
-                          max="10"
-                          step="0.1"
-                          className="w-20 mx-auto text-center"
-                          value={entry.semester2 ?? ''}
-                          onChange={(e) => handleScoreChange(entry.studentId, e.target.value)}
-                        />
-                      ) : (
-                        getScoreBadge(entry.semester2)
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {getScoreBadge(calculateAverage(entry))}
-                    </TableCell>
+        {!selectedClass ? (
+          <Card variant="flat" className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Database className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Chọn lớp để nhập điểm</h3>
+              <p className="text-muted-foreground text-center">
+                Vui lòng chọn lớp học từ danh sách phía trên
+              </p>
+            </CardContent>
+          </Card>
+        ) : isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : classStudents.length === 0 ? (
+          <Card variant="flat" className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Users className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Lớp chưa có học viên</h3>
+              <p className="text-muted-foreground text-center">
+                Vui lòng thêm học viên vào lớp trước khi nhập điểm
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card variant="elevated">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Bảng điểm - {selectedClassInfo?.name}
+              </CardTitle>
+              <CardDescription>
+                {isEditing ? `Đang nhập ${getScoreLabel(scoreType)}` : 'Xem điểm tổng hợp'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[50px]">STT</TableHead>
+                    <TableHead>Họ và tên</TableHead>
+                    <TableHead className="text-center">Thuyết trình</TableHead>
+                    <TableHead className="text-center">HK1</TableHead>
+                    <TableHead className="text-center">HK2</TableHead>
+                    <TableHead className="text-center">ĐTB</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {(isEditing ? scores : classStudents.map(s => ({ studentId: s.id, studentName: s.name, presentation: null, semester1: null, semester2: null }))).map((entry, index) => (
+                    <TableRow key={entry.studentId}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell className="font-medium">{entry.studentName}</TableCell>
+                      <TableCell className="text-center">
+                        {isEditing && scoreType === 'presentation' ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            max="10"
+                            step="0.1"
+                            className="w-20 mx-auto text-center"
+                            value={entry.presentation ?? ''}
+                            onChange={(e) => handleScoreChange(entry.studentId, e.target.value)}
+                          />
+                        ) : (
+                          getScoreBadge(entry.presentation)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {isEditing && scoreType === 'semester1' ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            max="10"
+                            step="0.1"
+                            className="w-20 mx-auto text-center"
+                            value={entry.semester1 ?? ''}
+                            onChange={(e) => handleScoreChange(entry.studentId, e.target.value)}
+                          />
+                        ) : (
+                          getScoreBadge(entry.semester1)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {isEditing && scoreType === 'semester2' ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            max="10"
+                            step="0.1"
+                            className="w-20 mx-auto text-center"
+                            value={entry.semester2 ?? ''}
+                            onChange={(e) => handleScoreChange(entry.studentId, e.target.value)}
+                          />
+                        ) : (
+                          getScoreBadge(entry.semester2)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {getScoreBadge(null)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </MainLayout>
   );

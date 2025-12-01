@@ -23,55 +23,43 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { mockClasses, mockUsers, mockAcademicYears } from '@/data/mockData';
-import { ClassInfo } from '@/types';
-import { Plus, Users, Clock, UserCheck, ChevronRight } from 'lucide-react';
+import { useClasses, useCreateClass } from '@/hooks/useClasses';
+import { useAcademicYears, useActiveAcademicYear } from '@/hooks/useAcademicYears';
+import { Plus, Users, Clock, UserCheck, ChevronRight, Loader2, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Classes() {
   const navigate = useNavigate();
-  const [classes, setClasses] = useState<ClassInfo[]>(mockClasses);
+  const { data: classes, isLoading } = useClasses();
+  const { data: academicYears } = useAcademicYears();
+  const { data: activeYear } = useActiveAcademicYear();
+  const createClass = useCreateClass();
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newClass, setNewClass] = useState({
     name: '',
-    academicYearId: '',
+    academic_year_id: '',
     description: '',
     schedule: ''
   });
 
-  const glvUsers = mockUsers.filter(u => u.role === 'glv');
-  const activeYear = mockAcademicYears.find(y => y.isActive);
-
-  const handleCreateClass = () => {
-    if (!newClass.name || !newClass.academicYearId) {
+  const handleCreateClass = async () => {
+    if (!newClass.name || !newClass.academic_year_id) {
       toast.error('Vui lòng điền đầy đủ thông tin bắt buộc');
       return;
     }
 
-    // Check for duplicate name in same year
-    if (classes.some(c => c.name === newClass.name && c.academicYearId === newClass.academicYearId)) {
-      toast.error('Tên lớp đã tồn tại trong niên khóa này');
-      return;
-    }
-
-    const yearName = mockAcademicYears.find(y => y.id === newClass.academicYearId)?.name || '';
-
-    const cls: ClassInfo = {
-      id: String(classes.length + 1),
+    createClass.mutate({
       name: newClass.name,
-      academicYearId: newClass.academicYearId,
-      academicYearName: yearName,
-      description: newClass.description,
-      schedule: newClass.schedule,
-      catechists: [],
-      studentCount: 0,
-      createdAt: new Date().toISOString()
-    };
-
-    setClasses([cls, ...classes]);
-    setNewClass({ name: '', academicYearId: '', description: '', schedule: '' });
-    setIsDialogOpen(false);
-    toast.success('Tạo lớp thành công!');
+      academic_year_id: newClass.academic_year_id,
+      description: newClass.description || undefined,
+      schedule: newClass.schedule || undefined,
+    }, {
+      onSuccess: () => {
+        setNewClass({ name: '', academic_year_id: '', description: '', schedule: '' });
+        setIsDialogOpen(false);
+      }
+    });
   };
 
   return (
@@ -84,12 +72,12 @@ export default function Classes() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-muted-foreground">
-              Niên khóa {activeYear?.name} • {classes.length} lớp
+              {activeYear ? `Niên khóa ${activeYear.name}` : 'Chưa có niên khóa'} • {classes?.length || 0} lớp
             </p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="gold">
+              <Button variant="gold" disabled={!academicYears || academicYears.length === 0}>
                 <Plus className="mr-2 h-4 w-4" />
                 Tạo lớp mới
               </Button>
@@ -114,16 +102,16 @@ export default function Classes() {
                 <div className="space-y-2">
                   <Label htmlFor="academicYear">Niên khóa *</Label>
                   <Select
-                    value={newClass.academicYearId}
-                    onValueChange={(value) => setNewClass({ ...newClass, academicYearId: value })}
+                    value={newClass.academic_year_id}
+                    onValueChange={(value) => setNewClass({ ...newClass, academic_year_id: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Chọn niên khóa" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockAcademicYears.map(year => (
+                      {(academicYears || []).map(year => (
                         <SelectItem key={year.id} value={year.id}>
-                          {year.name} {year.isActive && '(Đang hoạt động)'}
+                          {year.name} {year.is_active && '(Đang hoạt động)'}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -152,8 +140,15 @@ export default function Classes() {
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Hủy
                 </Button>
-                <Button onClick={handleCreateClass}>
-                  Tạo lớp
+                <Button onClick={handleCreateClass} disabled={createClass.isPending}>
+                  {createClass.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Đang tạo...
+                    </>
+                  ) : (
+                    'Tạo lớp'
+                  )}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -161,77 +156,98 @@ export default function Classes() {
         </div>
 
         {/* Classes Grid */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {classes.map((cls, index) => (
-            <Card 
-              key={cls.id} 
-              variant="interactive"
-              className="animate-fade-in cursor-pointer"
-              style={{ animationDelay: `${index * 100}ms` }}
-              onClick={() => navigate(`/classes/${cls.id}`)}
-            >
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      {cls.name}
-                      <Badge variant="gold">{cls.academicYearName}</Badge>
-                    </CardTitle>
-                    <CardDescription className="mt-1">
-                      {cls.description || 'Không có mô tả'}
-                    </CardDescription>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : classes && classes.length > 0 ? (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {classes.map((cls, index) => (
+              <Card 
+                key={cls.id} 
+                variant="interactive"
+                className="animate-fade-in cursor-pointer"
+                style={{ animationDelay: `${index * 100}ms` }}
+                onClick={() => navigate(`/classes/${cls.id}`)}
+              >
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        {cls.name}
+                        <Badge variant="gold">{cls.academic_years?.name || 'N/A'}</Badge>
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        {cls.description || 'Không có mô tả'}
+                      </CardDescription>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {/* Stats */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <Users className="h-5 w-5 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <Users className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-lg font-bold text-foreground">{cls.students?.[0]?.count || 0}</p>
+                          <p className="text-xs text-muted-foreground">Học viên</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-lg font-bold text-foreground">{cls.studentCount}</p>
-                        <p className="text-xs text-muted-foreground">Học viên</p>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
+                          <Clock className="h-5 w-5 text-accent" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{cls.schedule || 'Chưa xếp'}</p>
+                          <p className="text-xs text-muted-foreground">Lịch học</p>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
-                        <Clock className="h-5 w-5 text-accent" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{cls.schedule || 'Chưa xếp'}</p>
-                        <p className="text-xs text-muted-foreground">Lịch học</p>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Catechists */}
-                  <div className="border-t pt-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <UserCheck className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Giáo lý viên phụ trách</span>
-                    </div>
-                    {cls.catechists.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {cls.catechists.map(cat => (
-                          <Badge key={cat.id} variant="secondary">
-                            {cat.name}
-                          </Badge>
-                        ))}
+                    <div className="border-t pt-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <UserCheck className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Giáo lý viên phụ trách</span>
                       </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground italic">Chưa gán GLV</p>
-                    )}
+                      {cls.class_catechists && cls.class_catechists.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {cls.class_catechists.map(cc => (
+                            <Badge key={cc.id} variant="secondary">
+                              {cc.catechists?.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">Chưa gán GLV</p>
+                      )}
+                    </div>
                   </div>
-
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card variant="flat" className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Database className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Chưa có lớp học nào</h3>
+              <p className="text-muted-foreground text-center mb-4">
+                {!academicYears || academicYears.length === 0 
+                  ? 'Hãy tạo niên khóa trước khi tạo lớp học'
+                  : 'Bắt đầu bằng việc tạo lớp học đầu tiên'}
+              </p>
+              {academicYears && academicYears.length > 0 && (
+                <Button variant="gold" onClick={() => setIsDialogOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Tạo lớp đầu tiên
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </MainLayout>
   );
