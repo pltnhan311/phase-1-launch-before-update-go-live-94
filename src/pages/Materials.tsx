@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,6 +49,36 @@ export default function Materials() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<LearningMaterial | null>(null);
   const [previewMaterial, setPreviewMaterial] = useState<LearningMaterial | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  
+  // Fetch PDF as blob to bypass CORS/Chrome blocking
+  useEffect(() => {
+    if (previewMaterial?.file_url) {
+      setPdfLoading(true);
+      setPdfBlobUrl(null);
+      
+      fetch(previewMaterial.file_url)
+        .then(res => res.blob())
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          setPdfBlobUrl(url);
+        })
+        .catch(err => {
+          console.error('Error loading PDF:', err);
+          toast.error('Không thể tải PDF để xem trước');
+        })
+        .finally(() => setPdfLoading(false));
+    } else {
+      setPdfBlobUrl(null);
+    }
+    
+    return () => {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
+  }, [previewMaterial?.file_url]);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -407,13 +437,27 @@ export default function Materials() {
               </div>
             </div>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden bg-muted">
-            {previewMaterial?.file_url && (
+          <div className="flex-1 overflow-hidden bg-muted relative">
+            {pdfLoading ? (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Đang tải PDF...</p>
+                </div>
+              </div>
+            ) : pdfBlobUrl ? (
               <iframe
-                src={`${previewMaterial.file_url}#toolbar=1&navpanes=0&scrollbar=1`}
+                src={pdfBlobUrl}
                 className="w-full h-full border-0"
-                title={previewMaterial.title}
+                title={previewMaterial?.title || 'PDF Preview'}
               />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Không thể tải PDF</p>
+                </div>
+              </div>
             )}
           </div>
         </DialogContent>
