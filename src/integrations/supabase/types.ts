@@ -95,6 +95,50 @@ export type Database = {
           },
         ]
       }
+      attendance_sessions: {
+        Row: {
+          check_in_code: string
+          class_id: string
+          created_at: string
+          created_by: string | null
+          date: string
+          ended_at: string | null
+          id: string
+          is_active: boolean
+          started_at: string
+        }
+        Insert: {
+          check_in_code: string
+          class_id: string
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          ended_at?: string | null
+          id?: string
+          is_active?: boolean
+          started_at?: string
+        }
+        Update: {
+          check_in_code?: string
+          class_id?: string
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          ended_at?: string | null
+          id?: string
+          is_active?: boolean
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_sessions_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catechists: {
         Row: {
           address: string | null
