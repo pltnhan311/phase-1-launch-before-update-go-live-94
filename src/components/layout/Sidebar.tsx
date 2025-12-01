@@ -10,14 +10,13 @@ import {
   Users,
   ClipboardCheck,
   BookOpen,
-  FileText,
   BarChart3,
   Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Church,
-  Star
+  Star,
+  UserCheck
 } from 'lucide-react';
 
 const menuItems = [
@@ -40,6 +39,12 @@ const menuItems = [
     roles: ['admin', 'glv']
   },
   { 
+    icon: UserCheck, 
+    label: 'Giáo lý viên', 
+    path: '/catechists',
+    roles: ['admin']
+  },
+  { 
     icon: Users, 
     label: 'Học viên', 
     path: '/students',
@@ -49,12 +54,6 @@ const menuItems = [
     icon: ClipboardCheck, 
     label: 'Điểm danh', 
     path: '/attendance',
-    roles: ['admin', 'glv']
-  },
-  { 
-    icon: Church, 
-    label: 'Tham dự lễ', 
-    path: '/mass-attendance',
     roles: ['admin', 'glv']
   },
   { 
@@ -77,7 +76,7 @@ const menuItems = [
   },
   { 
     icon: Settings, 
-    label: 'Quản lý', 
+    label: 'Cài đặt', 
     path: '/settings',
     roles: ['admin']
   },
@@ -107,7 +106,7 @@ export function Sidebar() {
               <GraduationCap className="h-6 w-6 text-sidebar-primary-foreground" />
             </div>
             <div className="flex flex-col">
-              <span className="font-display text-lg font-semibold text-sidebar-foreground">
+              <span className="text-lg font-semibold text-sidebar-foreground">
                 Giáo Lý
               </span>
               <span className="text-xs text-sidebar-foreground/60">
@@ -126,7 +125,7 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-4">
         {filteredMenu.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
           return (
             <Link
               key={item.path}
