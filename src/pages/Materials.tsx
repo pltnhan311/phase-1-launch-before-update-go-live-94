@@ -24,13 +24,15 @@ import {
 } from '@/components/ui/select';
 import { mockClasses, mockMaterials } from '@/data/mockData';
 import { LearningMaterial } from '@/types';
-import { Upload, FileText, Download, Eye, Calendar, User, Plus, BookOpen } from 'lucide-react';
+import { Upload, FileText, Download, Eye, Calendar, User, Plus, BookOpen, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Materials() {
   const [materials, setMaterials] = useState<LearningMaterial[]>(mockMaterials);
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewMaterial, setPreviewMaterial] = useState<LearningMaterial | null>(null);
   const [newMaterial, setNewMaterial] = useState({
     title: '',
     description: '',
@@ -64,6 +66,17 @@ export default function Materials() {
     setNewMaterial({ title: '', description: '', classId: '', week: '' });
     setIsDialogOpen(false);
     toast.success('Upload tài liệu thành công!');
+  };
+
+  const handleView = (material: LearningMaterial) => {
+    setPreviewMaterial(material);
+    setIsPreviewOpen(true);
+  };
+
+  const handleDownload = (material: LearningMaterial) => {
+    toast.info('Cần kết nối Storage để tải xuống tài liệu. Vui lòng kết nối Lovable Cloud.', {
+      duration: 4000
+    });
   };
 
   const formatDate = (dateString: string) => {
@@ -235,11 +248,21 @@ export default function Materials() {
                   </div>
                   
                   <div className="flex gap-2 pt-3 border-t">
-                    <Button variant="outline" size="sm" className="flex-1">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={() => handleView(material)}
+                    >
                       <Eye className="mr-2 h-4 w-4" />
                       Xem
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={() => handleDownload(material)}
+                    >
                       <Download className="mr-2 h-4 w-4" />
                       Tải xuống
                     </Button>
@@ -255,7 +278,7 @@ export default function Materials() {
           <Card variant="flat" className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="font-display text-lg font-semibold mb-2">Chưa có tài liệu</h3>
+              <h3 className="text-lg font-semibold mb-2">Chưa có tài liệu</h3>
               <p className="text-muted-foreground text-center mb-4">
                 Bắt đầu bằng việc upload tài liệu giáo án đầu tiên
               </p>
@@ -266,6 +289,60 @@ export default function Materials() {
             </CardContent>
           </Card>
         )}
+
+        {/* Preview Dialog */}
+        <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+          <DialogContent className="sm:max-w-[700px] max-h-[80vh]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-destructive" />
+                {previewMaterial?.title}
+              </DialogTitle>
+              <DialogDescription>
+                {previewMaterial?.description || 'Không có mô tả'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="rounded-lg border bg-muted/50 p-8 text-center min-h-[300px] flex flex-col items-center justify-center">
+                <FileText className="h-16 w-16 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-2">
+                  Xem trước tài liệu PDF
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Cần kết nối Lovable Cloud Storage để hiển thị nội dung file
+                </p>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <BookOpen className="h-4 w-4" />
+                  <span>Lớp: {previewMaterial ? getClassName(previewMaterial.classId) : ''}</span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <User className="h-4 w-4" />
+                  <span>Upload bởi: {previewMaterial?.uploadedBy}</span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  <span>Ngày: {previewMaterial ? formatDate(previewMaterial.uploadedAt) : ''}</span>
+                </div>
+                {previewMaterial?.week && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Badge variant="secondary">Tuần {previewMaterial.week}</Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>
+                Đóng
+              </Button>
+              <Button onClick={() => previewMaterial && handleDownload(previewMaterial)}>
+                <Download className="mr-2 h-4 w-4" />
+                Tải xuống
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );

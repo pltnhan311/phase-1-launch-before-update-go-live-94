@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,11 +25,11 @@ import {
 } from '@/components/ui/select';
 import { mockClasses, mockUsers, mockAcademicYears } from '@/data/mockData';
 import { ClassInfo } from '@/types';
-import { Plus, Users, Calendar, Clock, UserCheck, ChevronRight } from 'lucide-react';
+import { Plus, Users, Clock, UserCheck, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
-import { Link } from 'react-router-dom';
 
 export default function Classes() {
+  const navigate = useNavigate();
   const [classes, setClasses] = useState<ClassInfo[]>(mockClasses);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newClass, setNewClass] = useState({
@@ -165,8 +166,9 @@ export default function Classes() {
             <Card 
               key={cls.id} 
               variant="interactive"
-              className="animate-fade-in"
+              className="animate-fade-in cursor-pointer"
               style={{ animationDelay: `${index * 100}ms` }}
+              onClick={() => navigate(`/classes/${cls.id}`)}
             >
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -179,6 +181,7 @@ export default function Classes() {
                       {cls.description || 'Không có mô tả'}
                     </CardDescription>
                   </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 </div>
               </CardHeader>
               <CardContent>
@@ -224,21 +227,6 @@ export default function Classes() {
                     )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2 pt-2">
-                    <Button variant="outline" size="sm" className="flex-1" asChild>
-                      <Link to={`/students?classId=${cls.id}`}>
-                        <Users className="mr-2 h-4 w-4" />
-                        Học viên
-                      </Link>
-                    </Button>
-                    <Button variant="outline" size="sm" className="flex-1" asChild>
-                      <Link to={`/attendance?classId=${cls.id}`}>
-                        <Calendar className="mr-2 h-4 w-4" />
-                        Điểm danh
-                      </Link>
-                    </Button>
-                  </div>
                 </div>
               </CardContent>
             </Card>
