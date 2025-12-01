@@ -85,11 +85,14 @@ const menuItems = [
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
-  const { user, logout, hasRole } = useAuth();
+  const { user, signOut, hasRole, userRole } = useAuth();
 
   const filteredMenu = menuItems.filter(item => 
     hasRole(item.roles as any[])
   );
+
+  const displayName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Người dùng';
+  const roleLabel = userRole === 'admin' ? 'Quản trị viên' : userRole === 'glv' ? 'Giáo lý viên' : 'Học viên';
 
   return (
     <aside 
@@ -149,12 +152,12 @@ export function Sidebar() {
         {!collapsed && user && (
           <div className="mb-3 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sidebar-accent text-sm font-medium">
-              {user.name.charAt(0)}
+              {displayName.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 truncate">
-              <p className="truncate text-sm font-medium">{user.name}</p>
+              <p className="truncate text-sm font-medium">{displayName}</p>
               <p className="truncate text-xs text-sidebar-foreground/60 capitalize">
-                {user.role === 'admin' ? 'Quản trị viên' : user.role === 'glv' ? 'Giáo lý viên' : 'Học viên'}
+                {roleLabel}
               </p>
             </div>
           </div>
@@ -163,7 +166,7 @@ export function Sidebar() {
           <Button
             variant="ghost"
             size={collapsed ? "icon" : "default"}
-            onClick={logout}
+            onClick={signOut}
             className="flex-1 justify-start text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <LogOut className="h-5 w-5" />
