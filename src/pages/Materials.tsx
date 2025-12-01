@@ -34,9 +34,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useClasses } from '@/hooks/useClasses';
 import { useLearningMaterials, useUploadMaterial, useDeleteMaterial, LearningMaterial } from '@/hooks/useLearningMaterials';
-import { Upload, FileText, Download, Eye, Calendar, User, Plus, Loader2, Trash2, ExternalLink } from 'lucide-react';
+import { Upload, FileText, Download, Eye, Calendar, User, Plus, Loader2, Trash2, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 export default function Materials() {
   const { data: classes, isLoading: classesLoading } = useClasses();
@@ -47,6 +48,7 @@ export default function Materials() {
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<LearningMaterial | null>(null);
+  const [previewMaterial, setPreviewMaterial] = useState<LearningMaterial | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -71,11 +73,11 @@ export default function Materials() {
     const file = e.target.files?.[0];
     if (file) {
       if (file.type !== 'application/pdf') {
-        alert('Chỉ hỗ trợ file PDF');
+        toast.error('Chỉ hỗ trợ file PDF');
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
-        alert('File quá lớn (tối đa 10MB)');
+        toast.error('File quá lớn (tối đa 10MB)');
         return;
       }
       setSelectedFile(file);
@@ -84,7 +86,7 @@ export default function Materials() {
 
   const handleUpload = async () => {
     if (!title.trim() || !classId || !selectedFile) {
-      alert('Vui lòng điền đầy đủ thông tin bắt buộc');
+      toast.error('Vui lòng điền đầy đủ thông tin bắt buộc');
       return;
     }
 
@@ -104,6 +106,34 @@ export default function Materials() {
     if (deleteTarget) {
       await deleteMutation.mutateAsync(deleteTarget);
       setDeleteTarget(null);
+    }
+  };
+
+  const handleDownload = async (material: LearningMaterial) => {
+    if (!material.file_url) {
+      toast.error('Không tìm thấy file');
+      return;
+    }
+
+    try {
+      toast.loading('Đang tải xuống...', { id: 'download' });
+      
+      const response = await fetch(material.file_url);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${material.title}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Tải xuống thành công!', { id: 'download' });
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Lỗi tải xuống. Thử lại sau.', { id: 'download' });
     }
   };
 
@@ -307,7 +337,7 @@ export default function Materials() {
                       variant="outline"
                       size="sm"
                       className="flex-1"
-                      onClick={() => material.file_url && window.open(material.file_url, '_blank')}
+                      onClick={() => setPreviewMaterial(material)}
                       disabled={!material.file_url}
                     >
                       <Eye className="mr-1 h-4 w-4" />
@@ -317,14 +347,7 @@ export default function Materials() {
                       variant="outline"
                       size="sm"
                       className="flex-1"
-                      onClick={() => {
-                        if (material.file_url) {
-                          const link = document.createElement('a');
-                          link.href = material.file_url;
-                          link.download = `${material.title}.pdf`;
-                          link.click();
-                        }
-                      }}
+                      onClick={() => handleDownload(material)}
                       disabled={!material.file_url}
                     >
                       <Download className="mr-1 h-4 w-4" />
@@ -359,6 +382,42 @@ export default function Materials() {
           </Card>
         )}
       </div>
+
+      {/* PDF Preview Dialog */}
+      <Dialog open={!!previewMaterial} onOpenChange={() => setPreviewMaterial(null)}>
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+          <DialogHeader className="p-4 pb-2 border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>{previewMaterial?.title}</DialogTitle>
+                <DialogDescription>
+                  {previewMaterial?.classes?.name}
+                  {previewMaterial?.week && ` • Tuần ${previewMaterial.week}`}
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => previewMaterial && handleDownload(previewMaterial)}
+                >
+                  <Download className="mr-1 h-4 w-4" />
+                  Tải xuống
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden bg-muted">
+            {previewMaterial?.file_url && (
+              <iframe
+                src={`${previewMaterial.file_url}#toolbar=1&navpanes=0&scrollbar=1`}
+                className="w-full h-full border-0"
+                title={previewMaterial.title}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
