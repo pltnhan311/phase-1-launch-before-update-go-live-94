@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -28,21 +27,40 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { mockClasses, mockStudents, mockUsers } from '@/data/mockData';
-import { ArrowLeft, Users, Clock, UserCheck, Plus, Calendar, TrendingUp } from 'lucide-react';
+import { useClass, useAssignCatechist, useRemoveCatechist } from '@/hooks/useClasses';
+import { useStudents } from '@/hooks/useStudents';
+import { useCatechists } from '@/hooks/useCatechists';
+import { ArrowLeft, Users, Clock, UserCheck, Plus, Calendar, TrendingUp, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Link } from 'react-router-dom';
 
 export default function ClassDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const classInfo = mockClasses.find(c => c.id === id);
-  const classStudents = mockStudents.filter(s => s.classId === id);
-  const glvUsers = mockUsers.filter(u => u.role === 'glv');
+  
+  const { data: classInfo, isLoading: classLoading } = useClass(id || '');
+  const { data: allStudents, isLoading: studentsLoading } = useStudents(id);
+  const { data: allCatechists } = useCatechists();
+  const assignCatechist = useAssignCatechist();
+  const removeCatechist = useRemoveCatechist();
 
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedGlv, setSelectedGlv] = useState<string>('');
-  const [assignedCatechists, setAssignedCatechists] = useState(classInfo?.catechists || []);
+
+  const classStudents = allStudents || [];
+  const assignedCatechists = classInfo?.class_catechists?.map(cc => cc.catechists) || [];
+  const availableCatechists = allCatechists?.filter(
+    cat => !assignedCatechists.some(ac => ac.id === cat.id)
+  ) || [];
+
+  if (classLoading || studentsLoading) {
+    return (
+      <MainLayout title="Đang tải..." subtitle="">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </MainLayout>
+    );
+  }
 
   if (!classInfo) {
     return (
@@ -63,18 +81,19 @@ export default function ClassDetail() {
       return;
     }
 
-    const glv = glvUsers.find(u => u.id === selectedGlv);
-    if (glv && !assignedCatechists.some(c => c.id === glv.id)) {
-      setAssignedCatechists([...assignedCatechists, glv]);
-      toast.success(`Đã gán ${glv.name} vào lớp ${classInfo.name}`);
-    }
-    setSelectedGlv('');
-    setIsAssignOpen(false);
+    assignCatechist.mutate(
+      { classId: id!, catechistId: selectedGlv },
+      {
+        onSuccess: () => {
+          setSelectedGlv('');
+          setIsAssignOpen(false);
+        }
+      }
+    );
   };
 
-  const handleRemoveGlv = (glvId: string) => {
-    setAssignedCatechists(assignedCatechists.filter(c => c.id !== glvId));
-    toast.success('Đã gỡ GLV khỏi lớp');
+  const handleRemoveGlv = (catechistId: string) => {
+    removeCatechist.mutate({ classId: id!, catechistId });
   };
 
   const formatDate = (dateString: string) => {
@@ -84,7 +103,7 @@ export default function ClassDetail() {
   return (
     <MainLayout 
       title={classInfo.name} 
-      subtitle={`Niên khóa ${classInfo.academicYearName}`}
+      subtitle={`Niên khóa ${classInfo.academic_years?.name || ''}`}
     >
       <div className="space-y-6">
         {/* Back button */}
@@ -135,7 +154,7 @@ export default function ClassDetail() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Chuyên cần TB</p>
-                <p className="text-2xl font-bold">93%</p>
+                <p className="text-2xl font-bold">-</p>
               </div>
             </CardContent>
           </Card>
@@ -158,29 +177,30 @@ export default function ClassDetail() {
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>STT</TableHead>
-                    <TableHead>Mã HV</TableHead>
-                    <TableHead>Họ và tên</TableHead>
-                    <TableHead>Tên Thánh</TableHead>
-                    <TableHead>Ngày sinh</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {classStudents.slice(0, 5).map((student, index) => (
-                    <TableRow key={student.id}>
-                      <TableCell>{index + 1}</TableCell>
-                      <TableCell className="font-mono text-sm">{student.studentId}</TableCell>
-                      <TableCell className="font-medium">{student.name}</TableCell>
-                      <TableCell>{student.baptismName || '-'}</TableCell>
-                      <TableCell>{formatDate(student.birthDate)}</TableCell>
+              {classStudents.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>STT</TableHead>
+                      <TableHead>Mã HV</TableHead>
+                      <TableHead>Họ và tên</TableHead>
+                      <TableHead>Tên Thánh</TableHead>
+                      <TableHead>Ngày sinh</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {classStudents.length === 0 && (
+                  </TableHeader>
+                  <TableBody>
+                    {classStudents.slice(0, 5).map((student, index) => (
+                      <TableRow key={student.id}>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell className="font-mono text-sm">{student.student_id}</TableCell>
+                        <TableCell className="font-medium">{student.name}</TableCell>
+                        <TableCell>{student.baptism_name || '-'}</TableCell>
+                        <TableCell>{formatDate(student.birth_date)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
                 <p className="text-center text-muted-foreground py-8">
                   Chưa có học viên trong lớp này
                 </p>
@@ -213,13 +233,11 @@ export default function ClassDetail() {
                           <SelectValue placeholder="Chọn GLV" />
                         </SelectTrigger>
                         <SelectContent>
-                          {glvUsers
-                            .filter(g => !assignedCatechists.some(c => c.id === g.id))
-                            .map(glv => (
-                              <SelectItem key={glv.id} value={glv.id}>
-                                {glv.name}
-                              </SelectItem>
-                            ))}
+                          {availableCatechists.map(cat => (
+                            <SelectItem key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -227,8 +245,8 @@ export default function ClassDetail() {
                       <Button variant="outline" onClick={() => setIsAssignOpen(false)}>
                         Hủy
                       </Button>
-                      <Button onClick={handleAssignGlv}>
-                        Gán vào lớp
+                      <Button onClick={handleAssignGlv} disabled={assignCatechist.isPending}>
+                        {assignCatechist.isPending ? 'Đang gán...' : 'Gán vào lớp'}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -249,7 +267,6 @@ export default function ClassDetail() {
                         </div>
                         <div>
                           <p className="font-medium">{cat.name}</p>
-                          <p className="text-xs text-muted-foreground">{cat.email}</p>
                         </div>
                       </div>
                       <Button 
@@ -257,6 +274,7 @@ export default function ClassDetail() {
                         size="sm"
                         className="text-destructive hover:text-destructive"
                         onClick={() => handleRemoveGlv(cat.id)}
+                        disabled={removeCatechist.isPending}
                       >
                         Gỡ
                       </Button>
