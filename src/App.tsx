@@ -19,6 +19,7 @@ import Materials from "./pages/Materials";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import Users from "./pages/Users";
 
 // Student pages
 import StudentDashboard from "./pages/student/StudentDashboard";
@@ -81,6 +82,7 @@ function AppRoutes() {
       <Route path="/scores" element={<ProtectedRoute><Scores /></ProtectedRoute>} />
       <Route path="/materials" element={<ProtectedRoute><Materials /></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+      <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       
       {/* Student routes */}
