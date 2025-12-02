@@ -7,22 +7,17 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { GraduationCap, User, KeyRound, Loader2, Mail, IdCard } from 'lucide-react';
+import { GraduationCap, KeyRound, Loader2, Mail, IdCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function Auth() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading: authLoading, userRole, signUp } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, userRole } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   
   // Login form
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  
-  // GLV Signup form
-  const [signupName, setSignupName] = useState('');
-  const [signupEmail, setSignupEmail] = useState('');
-  const [signupPassword, setSignupPassword] = useState('');
 
   // Student login form
   const [studentId, setStudentId] = useState('');
@@ -56,20 +51,6 @@ export default function Auth() {
       } else {
         toast.success('Đăng nhập thành công!');
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    
-    try {
-      await signUp(signupEmail, signupPassword, signupName);
-      toast.success('Đăng ký thành công! Tài khoản GLV đã được tạo.');
-    } catch (error: any) {
-      toast.error(error.message || 'Đăng ký thất bại');
     } finally {
       setIsLoading(false);
     }
@@ -165,10 +146,9 @@ export default function Auth() {
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="login" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-6">
+                <TabsList className="grid w-full grid-cols-2 mb-6">
                   <TabsTrigger value="login">Đăng nhập</TabsTrigger>
                   <TabsTrigger value="student">Học viên</TabsTrigger>
-                  <TabsTrigger value="signup">Đăng ký GLV</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="login">
@@ -258,66 +238,6 @@ export default function Auth() {
                         </>
                       ) : (
                         'Đăng nhập'
-                      )}
-                    </Button>
-                  </form>
-                </TabsContent>
-                
-                <TabsContent value="signup">
-                  <form onSubmit={handleSignup} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-name">Họ và tên</Label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          id="signup-name"
-                          type="text"
-                          placeholder="Nguyễn Văn A"
-                          value={signupName}
-                          onChange={(e) => setSignupName(e.target.value)}
-                          className="pl-10"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-email">Email</Label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          id="signup-email"
-                          type="email"
-                          placeholder="email@example.com"
-                          value={signupEmail}
-                          onChange={(e) => setSignupEmail(e.target.value)}
-                          className="pl-10"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-password">Mật khẩu</Label>
-                      <div className="relative">
-                        <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          id="signup-password"
-                          type="password"
-                          placeholder="••••••••"
-                          value={signupPassword}
-                          onChange={(e) => setSignupPassword(e.target.value)}
-                          className="pl-10"
-                          required
-                        />
-                      </div>
-                    </div>
-                    <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Đăng ký...
-                        </>
-                      ) : (
-                        'Đăng ký'
                       )}
                     </Button>
                   </form>

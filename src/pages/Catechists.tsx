@@ -43,6 +43,7 @@ export default function Catechists() {
     name: '',
     email: '',
     phone: '',
+    password: '',
     baptism_name: '',
     address: ''
   });
@@ -53,7 +54,24 @@ export default function Catechists() {
   );
 
   const handleCreateCatechist = async () => {
-    toast.error('Giáo lý viên cần đăng ký tài khoản qua trang Đăng nhập');
+    if (!newCatechist.name || !newCatechist.email || !newCatechist.password) {
+      toast.error('Vui lòng nhập đầy đủ thông tin bắt buộc');
+      return;
+    }
+
+    createCatechist.mutate(newCatechist, {
+      onSuccess: () => {
+        setIsDialogOpen(false);
+        setNewCatechist({
+          name: '',
+          email: '',
+          phone: '',
+          password: '',
+          baptism_name: '',
+          address: ''
+        });
+      }
+    });
   };
 
   const handleUpdateCatechist = () => {
@@ -151,16 +169,76 @@ export default function Catechists() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Hướng dẫn thêm Giáo lý viên</DialogTitle>
+                    <DialogTitle>Thêm Giáo lý viên mới</DialogTitle>
                     <DialogDescription>
-                      Giáo lý viên cần tạo tài khoản qua trang Đăng nhập/Đăng ký.
-                      Sau khi đăng ký, Admin có thể vào trang <strong>Quản lý người dùng</strong> để phân quyền vai trò GLV.
-                      Khi đó, họ sẽ tự động xuất hiện trong danh sách Giáo lý viên.
+                      Tạo tài khoản và thông tin cho giáo lý viên mới
                     </DialogDescription>
                   </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Họ và tên *</Label>
+                      <Input
+                        value={newCatechist.name}
+                        onChange={(e) => setNewCatechist({ ...newCatechist, name: e.target.value })}
+                        placeholder="Nguyễn Văn A"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Email *</Label>
+                      <Input
+                        type="email"
+                        value={newCatechist.email}
+                        onChange={(e) => setNewCatechist({ ...newCatechist, email: e.target.value })}
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Mật khẩu *</Label>
+                      <Input
+                        type="password"
+                        value={newCatechist.password}
+                        onChange={(e) => setNewCatechist({ ...newCatechist, password: e.target.value })}
+                        placeholder="Ít nhất 6 ký tự"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tên Thánh</Label>
+                      <Input
+                        value={newCatechist.baptism_name}
+                        onChange={(e) => setNewCatechist({ ...newCatechist, baptism_name: e.target.value })}
+                        placeholder="Tên Thánh"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Số điện thoại</Label>
+                      <Input
+                        value={newCatechist.phone}
+                        onChange={(e) => setNewCatechist({ ...newCatechist, phone: e.target.value })}
+                        placeholder="0123456789"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Địa chỉ</Label>
+                      <Input
+                        value={newCatechist.address}
+                        onChange={(e) => setNewCatechist({ ...newCatechist, address: e.target.value })}
+                        placeholder="Địa chỉ"
+                      />
+                    </div>
+                  </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                      Đã hiểu
+                      Hủy
+                    </Button>
+                    <Button onClick={handleCreateCatechist} disabled={createCatechist.isPending}>
+                      {createCatechist.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Đang tạo...
+                        </>
+                      ) : (
+                        'Tạo tài khoản'
+                      )}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
