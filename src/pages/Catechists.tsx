@@ -144,19 +144,25 @@ export default function Catechists() {
               </div>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="gold" disabled>
+                  <Button variant="gold" onClick={() => setIsDialogOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Thêm GLV
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Thông báo</DialogTitle>
+                    <DialogTitle>Hướng dẫn thêm Giáo lý viên</DialogTitle>
                     <DialogDescription>
                       Giáo lý viên cần tạo tài khoản qua trang Đăng nhập/Đăng ký.
-                      Sau khi đăng ký, họ sẽ tự động xuất hiện trong danh sách này.
+                      Sau khi đăng ký, Admin có thể vào trang <strong>Quản lý người dùng</strong> để phân quyền vai trò GLV.
+                      Khi đó, họ sẽ tự động xuất hiện trong danh sách Giáo lý viên.
                     </DialogDescription>
                   </DialogHeader>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                      Đã hiểu
+                    </Button>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>

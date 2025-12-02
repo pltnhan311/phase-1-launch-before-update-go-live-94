@@ -29,41 +29,29 @@ export function useCatechists() {
   return useQuery({
     queryKey: ['catechists'],
     queryFn: async () => {
-      // Fetch GLV users from profiles with their roles
+      // Fetch from profiles as the single source of truth, join with catechists for class info
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select(`
           *,
-          user_roles!inner (role)
+          user_roles!inner (role),
+          catechists!catechists_user_id_fkey (
+            id,
+            class_catechists (
+              id,
+              is_primary,
+              classes (
+                id,
+                name
+              )
+            )
+          )
         `)
         .eq('is_active', true)
         .in('user_roles.role', ['glv', 'admin'])
         .order('name');
 
       if (profilesError) throw profilesError;
-
-      // Fetch class assignments via catechists table
-      const { data: catechists, error: catechistsError } = await supabase
-        .from('catechists')
-        .select(`
-          user_id,
-          class_catechists (
-            id,
-            is_primary,
-            classes (
-              id,
-              name
-            )
-          )
-        `)
-        .eq('is_active', true);
-
-      if (catechistsError) throw catechistsError;
-
-      // Map class assignments to profiles
-      const catechistsMap = new Map(
-        catechists?.map(c => [c.user_id, c.class_catechists]) || []
-      );
 
       return (profiles || []).map(profile => ({
         id: profile.id,
@@ -78,7 +66,9 @@ export function useCatechists() {
         created_at: profile.created_at,
         updated_at: profile.updated_at,
         role: Array.isArray(profile.user_roles) ? profile.user_roles[0]?.role : undefined,
-        class_catechists: catechistsMap.get(profile.user_id) || []
+        class_catechists: Array.isArray(profile.catechists) && profile.catechists[0]
+          ? profile.catechists[0].class_catechists || []
+          : []
       })) as Catechist[];
     },
   });
