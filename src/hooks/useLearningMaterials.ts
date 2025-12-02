@@ -16,7 +16,7 @@ export interface LearningMaterial {
   classes?: {
     name: string;
   };
-  profiles?: {
+  uploader?: {
     name: string;
   };
 }
@@ -46,20 +46,20 @@ export function useLearningMaterials(classId?: string) {
       let uploaderMap: Record<string, string> = {};
       
       if (uploaderIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
+        const { data: catechists } = await supabase
+          .from('catechists')
           .select('user_id, name')
           .in('user_id', uploaderIds);
         
-        uploaderMap = (profiles || []).reduce((acc, p) => {
-          acc[p.user_id] = p.name;
+        uploaderMap = (catechists || []).reduce((acc, c) => {
+          if (c.user_id) acc[c.user_id] = c.name;
           return acc;
         }, {} as Record<string, string>);
       }
 
       return (data || []).map(m => ({
         ...m,
-        profiles: m.uploaded_by ? { name: uploaderMap[m.uploaded_by] || 'N/A' } : undefined
+        uploader: m.uploaded_by ? { name: uploaderMap[m.uploaded_by] || 'N/A' } : undefined
       })) as LearningMaterial[];
     },
   });

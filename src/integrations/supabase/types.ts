@@ -343,48 +343,6 @@ export type Database = {
           },
         ]
       }
-      profiles: {
-        Row: {
-          address: string | null
-          avatar_url: string | null
-          baptism_name: string | null
-          created_at: string
-          email: string | null
-          id: string
-          is_active: boolean | null
-          name: string
-          phone: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          address?: string | null
-          avatar_url?: string | null
-          baptism_name?: string | null
-          created_at?: string
-          email?: string | null
-          id?: string
-          is_active?: boolean | null
-          name: string
-          phone?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          address?: string | null
-          avatar_url?: string | null
-          baptism_name?: string | null
-          created_at?: string
-          email?: string | null
-          id?: string
-          is_active?: boolean | null
-          name?: string
-          phone?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       scores: {
         Row: {
           class_id: string

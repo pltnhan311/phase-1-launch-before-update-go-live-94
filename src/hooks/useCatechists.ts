@@ -122,7 +122,7 @@ export function useUpdateCatechist() {
   return useMutation({
     mutationFn: async ({ user_id, ...updates }: Partial<Catechist> & { user_id: string }) => {
       const { error } = await supabase
-        .from('profiles')
+        .from('catechists')
         .update({
           name: updates.name,
           email: updates.email,
@@ -153,7 +153,7 @@ export function useDeleteCatechist() {
   return useMutation({
     mutationFn: async (user_id: string) => {
       const { error } = await supabase
-        .from('profiles')
+        .from('catechists')
         .update({ is_active: false })
         .eq('user_id', user_id);
 
