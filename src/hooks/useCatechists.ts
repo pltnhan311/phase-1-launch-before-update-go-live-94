@@ -2,6 +2,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+interface CreateGLVParams {
+  name: string;
+  email: string;
+  phone?: string;
+  password: string;
+  baptism_name?: string;
+  address?: string;
+}
+
 export interface Catechist {
   id: string;
   user_id: string;
@@ -108,46 +117,23 @@ export function useCreateCatechist() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: { user_id: string; name: string; email?: string; phone?: string; address?: string; baptism_name?: string }) => {
-      // Create or update profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          user_id: data.user_id,
-          name: data.name,
-          email: data.email || null,
-          phone: data.phone || null,
-          address: data.address || null,
-          baptism_name: data.baptism_name || null,
-          is_active: true
-        }, {
-          onConflict: 'user_id'
-        });
+    mutationFn: async (params: CreateGLVParams) => {
+      // Call edge function to create auth user
+      const { data, error } = await supabase.functions.invoke('create-glv-account', {
+        body: params
+      });
 
-      if (profileError) throw profileError;
-
-      // Create catechist entry for class mapping
-      const { error: catechistError } = await supabase
-        .from('catechists')
-        .upsert({
-          user_id: data.user_id,
-          name: data.name,
-          is_active: true
-        }, {
-          onConflict: 'user_id'
-        });
-
-      if (catechistError) throw catechistError;
-
-      return { success: true };
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catechists'] });
-      toast.success('Đã thêm giáo lý viên thành công');
+      toast.success('Thêm giáo lý viên thành công!');
     },
     onError: (error) => {
-      console.error('Error creating catechist:', error);
-      toast.error('Không thể thêm giáo lý viên');
+      toast.error('Không thể thêm giáo lý viên: ' + error.message);
     },
   });
 }
