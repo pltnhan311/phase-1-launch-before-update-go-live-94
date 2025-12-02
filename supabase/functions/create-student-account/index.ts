@@ -38,6 +38,26 @@ serve(async (req) => {
 
     console.log('Auth account created:', authData.user.id);
 
+    // Delete the auto-created catechist from trigger (role will be 'admin')
+    const { error: deleteError } = await supabase
+      .from('catechists')
+      .delete()
+      .eq('user_id', authData.user.id);
+
+    if (deleteError) {
+      console.error('Delete auto-created catechist error:', deleteError);
+    }
+
+    // Delete the auto-created role from trigger
+    const { error: deleteRoleError } = await supabase
+      .from('user_roles')
+      .delete()
+      .eq('user_id', authData.user.id);
+
+    if (deleteRoleError) {
+      console.error('Delete auto-created role error:', deleteRoleError);
+    }
+
     // Link user_id to students table and set role
     const { error: updateError } = await supabase
       .from('students')
@@ -52,11 +72,9 @@ serve(async (req) => {
     // Set role to student
     const { error: roleError } = await supabase
       .from('user_roles')
-      .upsert({ 
+      .insert({ 
         user_id: authData.user.id, 
         role: 'student' 
-      }, {
-        onConflict: 'user_id'
       });
 
     if (roleError) {
