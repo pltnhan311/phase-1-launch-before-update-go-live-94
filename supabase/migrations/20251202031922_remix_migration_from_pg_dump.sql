@@ -83,6 +83,7 @@ CREATE FUNCTION public.handle_new_user() RETURNS trigger
     SET search_path TO 'public'
     AS $$
 BEGIN
+  -- Insert into profiles
   INSERT INTO public.profiles (user_id, name, email)
   VALUES (
     NEW.id,
@@ -292,7 +293,9 @@ CREATE TABLE public.profiles (
     address text,
     avatar_url text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    baptism_name text,
+    is_active boolean DEFAULT true
 );
 
 
@@ -814,6 +817,15 @@ CREATE POLICY "GLV can manage students in their classes" ON public.students TO a
    FROM (public.class_catechists cc
      JOIN public.catechists c ON ((cc.catechist_id = c.id)))
   WHERE ((cc.class_id = students.class_id) AND (c.user_id = auth.uid()))))));
+
+
+--
+-- Name: profiles Staff can manage GLV profiles; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Staff can manage GLV profiles" ON public.profiles USING ((public.has_role(auth.uid(), 'admin'::public.app_role) OR (public.is_staff(auth.uid()) AND (EXISTS ( SELECT 1
+   FROM public.user_roles
+  WHERE ((user_roles.user_id = profiles.user_id) AND (user_roles.role = ANY (ARRAY['glv'::public.app_role, 'admin'::public.app_role]))))))));
 
 
 --
