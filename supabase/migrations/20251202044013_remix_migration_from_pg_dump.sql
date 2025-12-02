@@ -82,6 +82,8 @@ CREATE FUNCTION public.handle_new_user() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
+DECLARE
+  default_role app_role := 'glv';
 BEGIN
   -- Insert into profiles
   INSERT INTO public.profiles (user_id, name, email)
@@ -91,9 +93,20 @@ BEGIN
     NEW.email
   );
   
-  -- Default role is 'glv' for new signups (can be changed by admin)
+  -- Insert role
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'glv');
+  VALUES (NEW.id, default_role);
+  
+  -- If role is glv or admin, also insert into catechists
+  IF default_role IN ('glv', 'admin') THEN
+    INSERT INTO public.catechists (user_id, name, email, is_active)
+    VALUES (
+      NEW.id,
+      COALESCE(NEW.raw_user_meta_data ->> 'name', NEW.email),
+      NEW.email,
+      true
+    );
+  END IF;
   
   RETURN NEW;
 END;
@@ -393,6 +406,14 @@ ALTER TABLE ONLY public.attendance_sessions
 
 ALTER TABLE ONLY public.catechists
     ADD CONSTRAINT catechists_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: catechists catechists_user_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.catechists
+    ADD CONSTRAINT catechists_user_id_key UNIQUE (user_id);
 
 
 --
