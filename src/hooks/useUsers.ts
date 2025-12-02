@@ -57,15 +57,60 @@ export function useUpdateUserRole() {
 
   return useMutation({
     mutationFn: async ({ userId, newRole }: { userId: string; newRole: AppRole }) => {
-      const { error } = await supabase
+      // Get current role to check if we need to sync catechists
+      const { data: currentRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+
+      // Update role
+      const { error: roleError } = await supabase
         .from('user_roles')
         .update({ role: newRole })
         .eq('user_id', userId);
 
-      if (error) throw error;
+      if (roleError) throw roleError;
+
+      // Sync with catechists table
+      if (newRole === 'glv' || newRole === 'admin') {
+        // If new role is glv/admin, ensure catechist record exists
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        if (profile) {
+          const { error: catechistError } = await supabase
+            .from('catechists')
+            .upsert({
+              user_id: userId,
+              name: profile.name,
+              email: profile.email,
+              phone: profile.phone,
+              address: profile.address,
+              baptism_name: profile.baptism_name,
+              is_active: true
+            }, {
+              onConflict: 'user_id'
+            });
+
+          if (catechistError) console.error('Error syncing catechist:', catechistError);
+        }
+      } else if (currentRole?.role === 'glv' || currentRole?.role === 'admin') {
+        // If changing from glv/admin to student, deactivate catechist
+        const { error: deactivateError } = await supabase
+          .from('catechists')
+          .update({ is_active: false })
+          .eq('user_id', userId);
+
+        if (deactivateError) console.error('Error deactivating catechist:', deactivateError);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
+      queryClient.invalidateQueries({ queryKey: ['catechists'] });
       toast.success('Cập nhật vai trò thành công!');
     },
     onError: (error) => {
