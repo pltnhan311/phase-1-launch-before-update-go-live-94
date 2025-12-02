@@ -18,33 +18,67 @@ export function useUsers() {
   return useQuery({
     queryKey: ['users-with-roles'],
     queryFn: async (): Promise<UserWithRole[]> => {
-      // Fetch profiles with their roles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (profilesError) throw profilesError;
-
       // Fetch all roles
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
-        .select('*');
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (rolesError) throw rolesError;
 
-      // Combine profiles with roles
-      const usersWithRoles: UserWithRole[] = (profiles || []).map(profile => {
-        const userRole = roles?.find(r => r.user_id === profile.user_id);
-        return {
-          id: profile.id,
-          user_id: profile.user_id,
-          name: profile.name,
-          email: profile.email,
-          phone: profile.phone,
-          role: (userRole?.role as AppRole) || 'student',
-          created_at: profile.created_at,
-        };
+      // Fetch catechists (admin/glv)
+      const { data: catechists, error: catechistsError } = await supabase
+        .from('catechists')
+        .select('*')
+        .eq('is_active', true);
+
+      if (catechistsError) throw catechistsError;
+
+      // Fetch students
+      const { data: students, error: studentsError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('is_active', true);
+
+      if (studentsError) throw studentsError;
+
+      // Combine all users with roles
+      const usersWithRoles: UserWithRole[] = (roles || []).map(roleRecord => {
+        const catechist = catechists?.find(c => c.user_id === roleRecord.user_id);
+        const student = students?.find(s => s.user_id === roleRecord.user_id);
+
+        if (catechist) {
+          return {
+            id: catechist.id,
+            user_id: catechist.user_id!,
+            name: catechist.name,
+            email: catechist.email,
+            phone: catechist.phone,
+            role: roleRecord.role as AppRole,
+            created_at: roleRecord.created_at,
+          };
+        } else if (student) {
+          return {
+            id: student.id,
+            user_id: student.user_id!,
+            name: student.name,
+            email: student.phone || null,
+            phone: student.phone,
+            role: roleRecord.role as AppRole,
+            created_at: roleRecord.created_at,
+          };
+        } else {
+          // User has role but no profile (shouldn't happen normally)
+          return {
+            id: roleRecord.id,
+            user_id: roleRecord.user_id,
+            name: 'Unknown User',
+            email: null,
+            phone: null,
+            role: roleRecord.role as AppRole,
+            created_at: roleRecord.created_at,
+          };
+        }
       });
 
       return usersWithRoles;
@@ -75,28 +109,32 @@ export function useUpdateUserRole() {
       // Sync with catechists table
       if (newRole === 'glv' || newRole === 'admin') {
         // If new role is glv/admin, ensure catechist record exists
-        const { data: profile } = await supabase
-          .from('profiles')
+        const { data: catechist } = await supabase
+          .from('catechists')
           .select('*')
           .eq('user_id', userId)
-          .single();
+          .maybeSingle();
 
-        if (profile) {
+        if (!catechist) {
+          // Create catechist record if doesn't exist
           const { error: catechistError } = await supabase
             .from('catechists')
-            .upsert({
+            .insert({
               user_id: userId,
-              name: profile.name,
-              email: profile.email,
-              phone: profile.phone,
-              address: profile.address,
-              baptism_name: profile.baptism_name,
+              name: 'Unknown User',
+              email: null,
               is_active: true
-            }, {
-              onConflict: 'user_id'
             });
 
-          if (catechistError) console.error('Error syncing catechist:', catechistError);
+          if (catechistError) console.error('Error creating catechist:', catechistError);
+        } else {
+          // Reactivate if exists
+          const { error: reactivateError } = await supabase
+            .from('catechists')
+            .update({ is_active: true })
+            .eq('user_id', userId);
+
+          if (reactivateError) console.error('Error reactivating catechist:', reactivateError);
         }
       } else if (currentRole?.role === 'glv' || currentRole?.role === 'admin') {
         // If changing from glv/admin to student, deactivate catechist
@@ -125,14 +163,30 @@ export function useDeleteUser() {
 
   return useMutation({
     mutationFn: async (userId: string) => {
-      // Note: This will only work if you have admin privileges
-      // In production, you'd call an edge function to delete the user
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('user_id', userId);
+      // Get user role to determine which table to update
+      const { data: userRole } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
 
-      if (error) throw error;
+      if (userRole?.role === 'student') {
+        // Deactivate student
+        const { error } = await supabase
+          .from('students')
+          .update({ is_active: false })
+          .eq('user_id', userId);
+
+        if (error) throw error;
+      } else {
+        // Deactivate catechist (admin/glv)
+        const { error } = await supabase
+          .from('catechists')
+          .update({ is_active: false })
+          .eq('user_id', userId);
+
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });

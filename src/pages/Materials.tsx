@@ -353,10 +353,10 @@ export default function Materials() {
                           <Calendar className="h-3 w-3" />
                           {format(new Date(material.created_at), 'dd/MM/yyyy', { locale: vi })}
                         </span>
-                        {material.profiles?.name && (
+                        {material.uploader?.name && (
                           <span className="flex items-center gap-1">
                             <User className="h-3 w-3" />
-                            {material.profiles.name}
+                            {material.uploader.name}
                           </span>
                         )}
                       </div>
