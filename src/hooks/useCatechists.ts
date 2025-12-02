@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 export interface Catechist {
   id: string;
-  user_id: string | null;
+  user_id: string;
   name: string;
   email: string | null;
   phone: string | null;
@@ -14,6 +14,7 @@ export interface Catechist {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  role?: string;
   class_catechists?: {
     id: string;
     is_primary: boolean;
@@ -28,10 +29,24 @@ export function useCatechists() {
   return useQuery({
     queryKey: ['catechists'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('catechists')
+      // Fetch GLV users from profiles with their roles
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
         .select(`
           *,
+          user_roles!inner (role)
+        `)
+        .eq('is_active', true)
+        .in('user_roles.role', ['glv', 'admin'])
+        .order('name');
+
+      if (profilesError) throw profilesError;
+
+      // Fetch class assignments via catechists table
+      const { data: catechists, error: catechistsError } = await supabase
+        .from('catechists')
+        .select(`
+          user_id,
           class_catechists (
             id,
             is_primary,
@@ -41,14 +56,30 @@ export function useCatechists() {
             )
           )
         `)
-        .eq('is_active', true)
-        .order('name');
+        .eq('is_active', true);
 
-      if (error) {
-        throw error;
-      }
+      if (catechistsError) throw catechistsError;
 
-      return data as Catechist[];
+      // Map class assignments to profiles
+      const catechistsMap = new Map(
+        catechists?.map(c => [c.user_id, c.class_catechists]) || []
+      );
+
+      return (profiles || []).map(profile => ({
+        id: profile.id,
+        user_id: profile.user_id,
+        name: profile.name,
+        email: profile.email,
+        phone: profile.phone,
+        address: profile.address,
+        baptism_name: profile.baptism_name,
+        avatar_url: profile.avatar_url,
+        is_active: profile.is_active,
+        created_at: profile.created_at,
+        updated_at: profile.updated_at,
+        role: Array.isArray(profile.user_roles) ? profile.user_roles[0]?.role : undefined,
+        class_catechists: catechistsMap.get(profile.user_id) || []
+      })) as Catechist[];
     },
   });
 }
@@ -87,18 +118,38 @@ export function useCreateCatechist() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (catechist: { name: string; email?: string; phone?: string; address?: string; baptism_name?: string }) => {
-      const { data, error } = await supabase
+    mutationFn: async (data: { user_id: string; name: string; email?: string; phone?: string; address?: string; baptism_name?: string }) => {
+      // Create or update profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          user_id: data.user_id,
+          name: data.name,
+          email: data.email || null,
+          phone: data.phone || null,
+          address: data.address || null,
+          baptism_name: data.baptism_name || null,
+          is_active: true
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (profileError) throw profileError;
+
+      // Create catechist entry for class mapping
+      const { error: catechistError } = await supabase
         .from('catechists')
-        .insert(catechist)
-        .select()
-        .single();
+        .upsert({
+          user_id: data.user_id,
+          name: data.name,
+          is_active: true
+        }, {
+          onConflict: 'user_id'
+        });
 
-      if (error) {
-        throw error;
-      }
+      if (catechistError) throw catechistError;
 
-      return data;
+      return { success: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catechists'] });
@@ -115,19 +166,21 @@ export function useUpdateCatechist() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Catechist> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('catechists')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
+    mutationFn: async ({ user_id, ...updates }: Partial<Catechist> & { user_id: string }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: updates.name,
+          email: updates.email,
+          phone: updates.phone,
+          address: updates.address,
+          baptism_name: updates.baptism_name,
+        })
+        .eq('user_id', user_id);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
-      return data;
+      return { success: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catechists'] });
@@ -144,15 +197,13 @@ export function useDeleteCatechist() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (user_id: string) => {
       const { error } = await supabase
-        .from('catechists')
+        .from('profiles')
         .update({ is_active: false })
-        .eq('id', id);
+        .eq('user_id', user_id);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catechists'] });

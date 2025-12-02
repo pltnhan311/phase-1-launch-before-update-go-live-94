@@ -29,7 +29,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useStudents, useCreateStudent, Student } from '@/hooks/useStudents';
+import { useStudents, useCreateStudent, useUpdateStudent, Student } from '@/hooks/useStudents';
+import { supabase } from '@/integrations/supabase/client';
 import { useClasses } from '@/hooks/useClasses';
 import { Plus, Search, Eye, Pencil, User, Phone, MapPin, Calendar, Loader2, Database } from 'lucide-react';
 import { toast } from 'sonner';
@@ -38,12 +39,15 @@ export default function Students() {
   const { data: students, isLoading } = useStudents();
   const { data: classes } = useClasses();
   const createStudent = useCreateStudent();
+  const updateStudent = useUpdateStudent();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   const [newStudent, setNewStudent] = useState({
     name: '',
@@ -85,7 +89,26 @@ export default function Students() {
       is_active: true,
       avatar_url: null,
     }, {
-      onSuccess: () => {
+      onSuccess: async (data) => {
+        // Auto-create auth account for student
+        try {
+          const { error } = await supabase.functions.invoke('create-student-account', {
+            body: { 
+              student_id: studentId,
+              student_db_id: data.id 
+            }
+          });
+          
+          if (error) {
+            console.error('Error creating student account:', error);
+            toast.warning(`Học viên đã được thêm nhưng không tạo được tài khoản đăng nhập`);
+          } else {
+            toast.success(`Tài khoản: ${studentId} | Mật khẩu: 123456`);
+          }
+        } catch (err) {
+          console.error('Error calling edge function:', err);
+        }
+
         setNewStudent({
           name: '',
           birth_date: '',
@@ -97,6 +120,27 @@ export default function Students() {
           address: ''
         });
         setIsDialogOpen(false);
+      }
+    });
+  };
+
+  const handleUpdateStudent = () => {
+    if (!editingStudent) return;
+
+    updateStudent.mutate({
+      id: editingStudent.id,
+      name: editingStudent.name,
+      birth_date: editingStudent.birth_date,
+      gender: editingStudent.gender,
+      class_id: editingStudent.class_id,
+      baptism_name: editingStudent.baptism_name,
+      phone: editingStudent.phone,
+      parent_phone: editingStudent.parent_phone,
+      address: editingStudent.address,
+    }, {
+      onSuccess: () => {
+        setIsEditDialogOpen(false);
+        setEditingStudent(null);
       }
     });
   };
@@ -329,7 +373,14 @@ export default function Students() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon">
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => {
+                              setEditingStudent(student);
+                              setIsEditDialogOpen(true);
+                            }}
+                          >
                             <Pencil className="h-4 w-4" />
                           </Button>
                         </div>
@@ -351,6 +402,118 @@ export default function Students() {
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Student Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            {editingStudent && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Chỉnh sửa thông tin học viên</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Họ và tên *</Label>
+                      <Input
+                        value={editingStudent.name}
+                        onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tên Thánh</Label>
+                      <Input
+                        value={editingStudent.baptism_name || ''}
+                        onChange={(e) => setEditingStudent({ ...editingStudent, baptism_name: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Ngày sinh *</Label>
+                      <Input
+                        type="date"
+                        value={editingStudent.birth_date}
+                        onChange={(e) => setEditingStudent({ ...editingStudent, birth_date: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Giới tính</Label>
+                      <Select
+                        value={editingStudent.gender}
+                        onValueChange={(value: 'male' | 'female') => setEditingStudent({ ...editingStudent, gender: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="male">Nam</SelectItem>
+                          <SelectItem value="female">Nữ</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Lớp học *</Label>
+                    <Select
+                      value={editingStudent.class_id || ''}
+                      onValueChange={(value) => setEditingStudent({ ...editingStudent, class_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(classes || []).map(cls => (
+                          <SelectItem key={cls.id} value={cls.id}>
+                            {cls.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>SĐT học viên</Label>
+                      <Input
+                        value={editingStudent.phone || ''}
+                        onChange={(e) => setEditingStudent({ ...editingStudent, phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>SĐT phụ huynh</Label>
+                      <Input
+                        value={editingStudent.parent_phone || ''}
+                        onChange={(e) => setEditingStudent({ ...editingStudent, parent_phone: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Địa chỉ</Label>
+                    <Input
+                      value={editingStudent.address || ''}
+                      onChange={(e) => setEditingStudent({ ...editingStudent, address: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                    Hủy
+                  </Button>
+                  <Button onClick={handleUpdateStudent} disabled={updateStudent.isPending}>
+                    {updateStudent.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Đang cập nhật...
+                      </>
+                    ) : (
+                      'Cập nhật'
+                    )}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Student Detail Dialog */}
         <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>

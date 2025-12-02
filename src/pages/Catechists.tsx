@@ -22,18 +22,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useCatechists, useCreateCatechist, useDeleteCatechist, Catechist } from '@/hooks/useCatechists';
+import { useCatechists, useCreateCatechist, useUpdateCatechist, useDeleteCatechist, Catechist } from '@/hooks/useCatechists';
 import { Plus, Search, Eye, Pencil, Trash2, Phone, Mail, GraduationCap, Loader2, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Catechists() {
   const { data: catechists, isLoading } = useCatechists();
   const createCatechist = useCreateCatechist();
+  const updateCatechist = useUpdateCatechist();
   const deleteCatechist = useDeleteCatechist();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedCatechist, setSelectedCatechist] = useState<Catechist | null>(null);
+  const [editingCatechist, setEditingCatechist] = useState<Catechist | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const [newCatechist, setNewCatechist] = useState({
@@ -50,27 +53,29 @@ export default function Catechists() {
   );
 
   const handleCreateCatechist = async () => {
-    if (!newCatechist.name) {
-      toast.error('Vui lòng điền họ và tên');
-      return;
-    }
+    toast.error('Giáo lý viên cần đăng ký tài khoản qua trang Đăng nhập');
+  };
 
-    createCatechist.mutate({
-      name: newCatechist.name,
-      email: newCatechist.email || undefined,
-      phone: newCatechist.phone || undefined,
-      baptism_name: newCatechist.baptism_name || undefined,
-      address: newCatechist.address || undefined,
+  const handleUpdateCatechist = () => {
+    if (!editingCatechist) return;
+
+    updateCatechist.mutate({
+      user_id: editingCatechist.user_id,
+      name: editingCatechist.name,
+      email: editingCatechist.email,
+      phone: editingCatechist.phone,
+      baptism_name: editingCatechist.baptism_name,
+      address: editingCatechist.address,
     }, {
       onSuccess: () => {
-        setNewCatechist({ name: '', email: '', phone: '', baptism_name: '', address: '' });
-        setIsDialogOpen(false);
+        setIsEditDialogOpen(false);
+        setEditingCatechist(null);
       }
     });
   };
 
-  const handleDelete = (id: string) => {
-    deleteCatechist.mutate(id);
+  const handleDelete = (user_id: string) => {
+    deleteCatechist.mutate(user_id);
   };
 
   const assignedCount = filteredCatechists.filter(c => 
@@ -139,72 +144,19 @@ export default function Catechists() {
               </div>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="gold">
+                  <Button variant="gold" disabled>
                     <Plus className="mr-2 h-4 w-4" />
                     Thêm GLV
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Thêm Giáo lý viên mới</DialogTitle>
+                    <DialogTitle>Thông báo</DialogTitle>
                     <DialogDescription>
-                      Điền thông tin để thêm GLV vào hệ thống.
+                      Giáo lý viên cần tạo tài khoản qua trang Đăng nhập/Đăng ký.
+                      Sau khi đăng ký, họ sẽ tự động xuất hiện trong danh sách này.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="catName">Họ và tên *</Label>
-                      <Input
-                        id="catName"
-                        placeholder="Nguyễn Văn A"
-                        value={newCatechist.name}
-                        onChange={(e) => setNewCatechist({ ...newCatechist, name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="catBaptismName">Tên Thánh</Label>
-                      <Input
-                        id="catBaptismName"
-                        placeholder="Giuse"
-                        value={newCatechist.baptism_name}
-                        onChange={(e) => setNewCatechist({ ...newCatechist, baptism_name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="catEmail">Email</Label>
-                      <Input
-                        id="catEmail"
-                        type="email"
-                        placeholder="email@example.com"
-                        value={newCatechist.email}
-                        onChange={(e) => setNewCatechist({ ...newCatechist, email: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="catPhone">Số điện thoại</Label>
-                      <Input
-                        id="catPhone"
-                        placeholder="0901234567"
-                        value={newCatechist.phone}
-                        onChange={(e) => setNewCatechist({ ...newCatechist, phone: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                      Hủy
-                    </Button>
-                    <Button onClick={handleCreateCatechist} disabled={createCatechist.isPending}>
-                      {createCatechist.isPending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Đang thêm...
-                        </>
-                      ) : (
-                        'Thêm GLV'
-                      )}
-                    </Button>
-                  </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>
@@ -271,14 +223,21 @@ export default function Catechists() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon">
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => {
+                              setEditingCatechist(catechist);
+                              setIsEditDialogOpen(true);
+                            }}
+                          >
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button 
                             variant="ghost" 
                             size="icon" 
                             className="text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(catechist.id)}
+                            onClick={() => handleDelete(catechist.user_id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -297,6 +256,72 @@ export default function Catechists() {
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Catechist Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            {editingCatechist && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Chỉnh sửa thông tin GLV</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Họ và tên *</Label>
+                    <Input
+                      value={editingCatechist.name}
+                      onChange={(e) => setEditingCatechist({ ...editingCatechist, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tên Thánh</Label>
+                    <Input
+                      value={editingCatechist.baptism_name || ''}
+                      onChange={(e) => setEditingCatechist({ ...editingCatechist, baptism_name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      value={editingCatechist.email || ''}
+                      onChange={(e) => setEditingCatechist({ ...editingCatechist, email: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Số điện thoại</Label>
+                    <Input
+                      value={editingCatechist.phone || ''}
+                      onChange={(e) => setEditingCatechist({ ...editingCatechist, phone: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Địa chỉ</Label>
+                    <Input
+                      value={editingCatechist.address || ''}
+                      onChange={(e) => setEditingCatechist({ ...editingCatechist, address: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                    Hủy
+                  </Button>
+                  <Button onClick={handleUpdateCatechist} disabled={updateCatechist.isPending}>
+                    {updateCatechist.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Đang cập nhật...
+                      </>
+                    ) : (
+                      'Cập nhật'
+                    )}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Catechist Detail Dialog */}
         <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
