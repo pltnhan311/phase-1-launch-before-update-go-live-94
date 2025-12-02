@@ -17,7 +17,8 @@ import {
   ChevronRight,
   Star,
   UserCheck,
-  Home
+  Home,
+  Shield
 } from 'lucide-react';
 
 const menuItems = [
@@ -73,6 +74,12 @@ const menuItems = [
     icon: BarChart3, 
     label: 'Báo cáo', 
     path: '/reports',
+    roles: ['admin']
+  },
+  { 
+    icon: Shield, 
+    label: 'Người dùng', 
+    path: '/users',
     roles: ['admin']
   },
   { 
