@@ -23,9 +23,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useClasses } from '@/hooks/useClasses';
 import { useStudents } from '@/hooks/useStudents';
+import { supabase } from '@/integrations/supabase/client';
 import { Calendar, CheckCircle2, XCircle, Clock, AlertCircle, Save, Users, Church, Loader2, Database, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExportAttendanceDialog } from '@/components/attendance/ExportAttendanceDialog';
+import { useAuth } from '@/contexts/AuthContext';
 
 type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
@@ -43,11 +45,13 @@ interface MassRecord {
 }
 
 export default function Attendance() {
+  const { user } = useAuth();
   const { data: classes, isLoading: classesLoading } = useClasses();
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isAttending, setIsAttending] = useState(false);
   const [isMassRecording, setIsMassRecording] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const { data: students, isLoading: studentsLoading } = useStudents(selectedClass || undefined);
 
@@ -113,14 +117,87 @@ export default function Attendance() {
     );
   };
 
-  const handleSaveAttendance = () => {
-    toast.success('Lưu điểm danh Giáo lý thành công!');
-    setIsAttending(false);
+  const handleSaveAttendance = async () => {
+    if (!selectedClass || !selectedDate || attendanceRecords.length === 0) {
+      toast.error('Dữ liệu không hợp lệ');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Delete existing records for this class and date
+      await supabase
+        .from('attendance_records')
+        .delete()
+        .eq('class_id', selectedClass)
+        .eq('date', selectedDate);
+
+      // Insert new records
+      const recordsToInsert = attendanceRecords.map(record => ({
+        student_id: record.studentId,
+        class_id: selectedClass,
+        date: selectedDate,
+        status: record.status,
+        note: record.note || null,
+        recorded_by: user?.id || null,
+      }));
+
+      const { error } = await supabase
+        .from('attendance_records')
+        .insert(recordsToInsert);
+
+      if (error) throw error;
+
+      toast.success('Lưu điểm danh Giáo lý thành công!');
+      setIsAttending(false);
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      toast.error('Lỗi khi lưu điểm danh');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSaveMass = () => {
-    toast.success('Lưu điểm danh Thánh lễ thành công!');
-    setIsMassRecording(false);
+  const handleSaveMass = async () => {
+    if (!selectedDate || massRecords.length === 0) {
+      toast.error('Dữ liệu không hợp lệ');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Get student IDs
+      const studentIds = massRecords.map(r => r.studentId);
+
+      // Delete existing records for these students and date
+      await supabase
+        .from('mass_attendance')
+        .delete()
+        .in('student_id', studentIds)
+        .eq('date', selectedDate);
+
+      // Insert new records
+      const recordsToInsert = massRecords.map(record => ({
+        student_id: record.studentId,
+        date: selectedDate,
+        attended: record.attended,
+        recorded_by: user?.id || null,
+      }));
+
+      const { error } = await supabase
+        .from('mass_attendance')
+        .insert(recordsToInsert);
+
+      if (error) throw error;
+
+      toast.success('Lưu điểm danh Thánh lễ thành công!');
+      setIsMassRecording(false);
+    } catch (error) {
+      console.error('Error saving mass attendance:', error);
+      toast.error('Lỗi khi lưu điểm danh');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getStatusBadge = (status: AttendanceStatus) => {
@@ -296,11 +373,15 @@ export default function Attendance() {
                     <div className="flex gap-2">
                       {isAttending ? (
                         <>
-                          <Button variant="outline" onClick={() => setIsAttending(false)}>
+                          <Button variant="outline" onClick={() => setIsAttending(false)} disabled={isSaving}>
                             Hủy
                           </Button>
-                          <Button variant="success" onClick={handleSaveAttendance}>
-                            <Save className="mr-2 h-4 w-4" />
+                          <Button variant="success" onClick={handleSaveAttendance} disabled={isSaving}>
+                            {isSaving ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Save className="mr-2 h-4 w-4" />
+                            )}
                             Lưu
                           </Button>
                         </>
@@ -429,11 +510,15 @@ export default function Attendance() {
                     <div className="flex gap-2">
                       {isMassRecording ? (
                         <>
-                          <Button variant="outline" onClick={() => setIsMassRecording(false)}>
+                          <Button variant="outline" onClick={() => setIsMassRecording(false)} disabled={isSaving}>
                             Hủy
                           </Button>
-                          <Button variant="success" onClick={handleSaveMass}>
-                            <Save className="mr-2 h-4 w-4" />
+                          <Button variant="success" onClick={handleSaveMass} disabled={isSaving}>
+                            {isSaving ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Save className="mr-2 h-4 w-4" />
+                            )}
                             Lưu
                           </Button>
                         </>
