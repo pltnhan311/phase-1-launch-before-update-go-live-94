@@ -102,8 +102,16 @@ export default function Materials() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.type !== 'application/pdf') {
-        toast.error('Chỉ hỗ trợ file PDF');
+      const allowedTypes = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        'application/msword' // .doc (legacy)
+      ];
+      const allowedExtensions = ['.pdf', '.docx', '.doc'];
+      const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
+      
+      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExt)) {
+        toast.error('Chỉ hỗ trợ file PDF và Word (DOCX)');
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
@@ -152,9 +160,14 @@ export default function Materials() {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       
+      // Detect file extension from URL or file_type
+      const fileExt = material.file_type === 'docx' ? '.docx' : 
+                     material.file_url.toLowerCase().includes('.docx') ? '.docx' :
+                     material.file_url.toLowerCase().includes('.doc') ? '.doc' : '.pdf';
+      
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${material.title}.pdf`;
+      link.download = `${material.title}${fileExt}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -209,7 +222,7 @@ export default function Materials() {
               <DialogHeader>
                 <DialogTitle>Upload tài liệu mới</DialogTitle>
                 <DialogDescription>
-                  Upload file PDF giáo án cho lớp học.
+                  Upload file PDF hoặc Word (DOCX) giáo án cho lớp học.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -260,11 +273,11 @@ export default function Materials() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>File PDF *</Label>
+                  <Label>File tài liệu *</Label>
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,application/pdf"
+                    accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
                     onChange={handleFileSelect}
                     className="hidden"
                   />
@@ -284,10 +297,10 @@ export default function Materials() {
                       <>
                         <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                         <p className="text-sm text-muted-foreground">
-                          Kéo thả file PDF vào đây hoặc click để chọn
+                          Kéo thả file PDF hoặc Word vào đây hoặc click để chọn
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Chỉ hỗ trợ file PDF, tối đa 10MB
+                          Hỗ trợ file PDF và Word (DOCX), tối đa 10MB
                         </p>
                       </>
                     )}
@@ -402,7 +415,7 @@ export default function Materials() {
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">Chưa có tài liệu</h3>
               <p className="text-muted-foreground text-center mb-4">
-                Upload tài liệu giáo án PDF để chia sẻ với GLV và học viên
+                Upload tài liệu giáo án PDF hoặc Word để chia sẻ với GLV và học viên
               </p>
               <Button variant="gold" onClick={() => setIsDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -438,27 +451,66 @@ export default function Materials() {
             </div>
           </DialogHeader>
           <div className="flex-1 overflow-hidden bg-muted relative">
-            {pdfLoading ? (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Đang tải PDF...</p>
+            {(() => {
+              const isDocx = previewMaterial?.file_type === 'docx' || 
+                           previewMaterial?.file_url?.toLowerCase().includes('.docx') ||
+                           previewMaterial?.file_url?.toLowerCase().includes('.doc');
+              
+              if (isDocx) {
+                // DOCX files cannot be previewed in browser, show download option
+                return (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center p-8">
+                      <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">File Word</h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        File Word không thể xem trước trong trình duyệt.
+                        <br />
+                        Vui lòng tải xuống để xem nội dung.
+                      </p>
+                      <Button
+                        onClick={() => previewMaterial && handleDownload(previewMaterial)}
+                        variant="gold"
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Tải xuống file
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+              
+              // PDF preview
+              if (pdfLoading) {
+                return (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Đang tải PDF...</p>
+                    </div>
+                  </div>
+                );
+              }
+              
+              if (pdfBlobUrl) {
+                return (
+                  <iframe
+                    src={pdfBlobUrl}
+                    className="w-full h-full border-0"
+                    title={previewMaterial?.title || 'PDF Preview'}
+                  />
+                );
+              }
+              
+              return (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Không thể tải file</p>
+                  </div>
                 </div>
-              </div>
-            ) : pdfBlobUrl ? (
-              <iframe
-                src={pdfBlobUrl}
-                className="w-full h-full border-0"
-                title={previewMaterial?.title || 'PDF Preview'}
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Không thể tải PDF</p>
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </DialogContent>
       </Dialog>

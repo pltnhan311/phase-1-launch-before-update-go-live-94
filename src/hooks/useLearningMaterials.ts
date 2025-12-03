@@ -95,21 +95,66 @@ export function useUploadMaterial() {
       if (!user) throw new Error("Chưa đăng nhập");
 
       // Upload file to storage
-      const fileExt = file.name.split(".").pop();
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "";
       const fileName = `${user.id}/${Date.now()}-${Math.random()
         .toString(36)
         .substring(7)}.${fileExt}`;
+      
+      // Detect file type
+      const fileType = fileExt === "docx" || fileExt === "doc" ? "docx" : "pdf";
 
-      const { error: uploadError } = await supabase.storage
-        .from("learning-materials")
-        .upload(fileName, file);
+      // Try different bucket name variations - Supabase bucket names are case-sensitive
+      // Try learning_materials first (with underscore), then learning-materials (with dash)
+      let bucketName = "learning_materials";
+      let uploadError = null;
+      
+      // Try with underscore first
+      let result = await supabase.storage
+        .from(bucketName)
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+      
+      uploadError = result.error;
+      
+      // If that fails, try with dash
+      if (uploadError && (uploadError.message?.includes("not found") || uploadError.message?.includes("Bucket"))) {
+        bucketName = "learning-materials";
+        result = await supabase.storage
+          .from(bucketName)
+          .upload(fileName, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+        uploadError = result.error;
+      }
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("Upload error details:", uploadError);
+        // Check if bucket exists
+        const { data: buckets } = await supabase.storage.listBuckets();
+        const availableBuckets = buckets?.map((b) => b.name) || [];
+        const bucketExists = availableBuckets.some((name) => 
+          name === "learning_materials" || 
+          name === "learning-materials" || 
+          name === "LEARNING_MATERIALS"
+        );
+        
+        if (!bucketExists) {
+          throw new Error(
+            `Bucket "learning_materials" hoặc "learning-materials" không tồn tại. ` +
+            `Các bucket hiện có: ${availableBuckets.join(", ") || "không có"}. ` +
+            `Vui lòng tạo bucket trong Supabase Storage Dashboard.`
+          );
+        }
+        throw uploadError;
+      }
 
       // Get public URL
       const {
         data: { publicUrl },
-      } = supabase.storage.from("learning-materials").getPublicUrl(fileName);
+      } = supabase.storage.from(bucketName).getPublicUrl(fileName);
 
       // Insert record into database
       const { data, error } = await supabase
@@ -120,7 +165,7 @@ export function useUploadMaterial() {
           class_id: classId,
           week: week || null,
           file_url: publicUrl,
-          file_type: "pdf",
+          file_type: fileType,
           uploaded_by: user.id,
         })
         .select()
@@ -147,11 +192,38 @@ export function useDeleteMaterial() {
     mutationFn: async (material: LearningMaterial) => {
       // Delete file from storage if exists
       if (material.file_url) {
-        const urlParts = material.file_url.split("/learning-materials/");
-        if (urlParts[1]) {
-          await supabase.storage
-            .from("learning-materials")
-            .remove([urlParts[1]]);
+        // Try to detect bucket name from URL
+        let filePath = null;
+        let bucketName = "learning_materials";
+        
+        // Try with underscore first
+        const urlParts1 = material.file_url.split("/learning_materials/");
+        if (urlParts1[1]) {
+          filePath = urlParts1[1];
+          bucketName = "learning_materials";
+        } else {
+          // Try with dash
+          const urlParts2 = material.file_url.split("/learning-materials/");
+          if (urlParts2[1]) {
+            filePath = urlParts2[1];
+            bucketName = "learning-materials";
+          }
+        }
+        
+        if (filePath) {
+          const { error: deleteError } = await supabase.storage
+            .from(bucketName)
+            .remove([filePath]);
+          
+          // If delete fails with one bucket name, try the other
+          if (deleteError && deleteError.message?.includes("not found")) {
+            const altBucketName = bucketName === "learning_materials" 
+              ? "learning-materials" 
+              : "learning_materials";
+            await supabase.storage
+              .from(altBucketName)
+              .remove([filePath]);
+          }
         }
       }
 

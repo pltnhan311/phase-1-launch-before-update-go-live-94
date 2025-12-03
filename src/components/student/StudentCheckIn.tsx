@@ -123,7 +123,8 @@ export function StudentCheckIn({ studentId, classId }: StudentCheckInProps) {
           Điểm danh
         </CardTitle>
         <CardDescription>
-          Nhập mã 6 số từ Giáo lý viên để điểm danh
+          Nhập mã 6 số từ Giáo lý viên để điểm danh. 
+          Mã này được tạo khi GLV mở phiên điểm danh trong hệ thống và hiển thị trên màn hình của GLV.
         </CardDescription>
       </CardHeader>
       <CardContent>
