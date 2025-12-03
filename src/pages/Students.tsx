@@ -29,11 +29,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useStudents, useCreateStudent, useUpdateStudent, Student } from '@/hooks/useStudents';
 import { supabase } from '@/integrations/supabase/client';
 import { useClasses } from '@/hooks/useClasses';
-import { Plus, Search, Eye, Pencil, User, Phone, MapPin, Calendar, Loader2, Database } from 'lucide-react';
+import { Plus, Search, Eye, Pencil, User, Phone, MapPin, Calendar, Loader2, Database, Upload, Download, MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
+import { ImportStudentsDialog } from '@/components/students/ImportStudentsDialog';
+import { generateStudentCSV, downloadCSV, StudentImportData } from '@/utils/csvUtils';
 
 export default function Students() {
   const { data: students, isLoading } = useStudents();
@@ -48,6 +56,8 @@ export default function Students() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const [newStudent, setNewStudent] = useState({
     name: '',
@@ -153,6 +163,90 @@ export default function Students() {
     });
   };
 
+  // Import students from CSV
+  const handleImportStudents = async (importData: Array<StudentImportData & { class_id: string }>) => {
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const studentData of importData) {
+      try {
+        const studentId = `HS${new Date().getFullYear()}${String((students?.length || 0) + successCount + 1).padStart(3, '0')}`;
+        
+        const { data, error } = await supabase
+          .from('students')
+          .insert({
+            student_id: studentId,
+            name: studentData.name,
+            birth_date: studentData.birth_date,
+            gender: studentData.gender,
+            class_id: studentData.class_id,
+            baptism_name: studentData.baptism_name || null,
+            address: studentData.address || null,
+            enrollment_date: new Date().toISOString().split('T')[0],
+            is_active: true,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Create auth account
+        await supabase.functions.invoke('create-student-account', {
+          body: { student_id: studentId, student_db_id: data.id }
+        });
+
+        successCount++;
+      } catch (error) {
+        console.error('Error importing student:', error);
+        errorCount++;
+      }
+    }
+
+    // Refetch students
+    await supabase.from('students').select('id').limit(1);
+    window.location.reload();
+
+    if (successCount > 0) {
+      toast.success(`Đã import thành công ${successCount} học viên`);
+    }
+    if (errorCount > 0) {
+      toast.error(`Lỗi khi import ${errorCount} học viên`);
+    }
+  };
+
+  // Export students to CSV
+  const handleExportStudents = () => {
+    if (!filteredStudents.length) {
+      toast.error('Không có học viên để xuất');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const exportData = filteredStudents.map(student => ({
+        baptism_name: student.baptism_name,
+        name: student.name,
+        gender: student.gender,
+        birth_date: student.birth_date,
+        address: student.address,
+        class_name: student.classes?.name || ''
+      }));
+
+      const csvContent = generateStudentCSV(exportData);
+      const className = selectedClass !== 'all' 
+        ? classes?.find(c => c.id === selectedClass)?.name?.replace(/\s+/g, '_') || 'all'
+        : 'tat_ca';
+      downloadCSV(csvContent, `danh_sach_hoc_vien_${className}.csv`);
+      
+      toast.success('Xuất danh sách thành công');
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Lỗi khi xuất danh sách');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <MainLayout 
       title="Quản lý Học viên" 
@@ -187,14 +281,34 @@ export default function Students() {
                   </SelectContent>
                 </Select>
               </div>
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="gold" disabled={!classes || classes.length === 0}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Thêm học viên
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[600px]">
+              <div className="flex gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <MoreHorizontal className="mr-2 h-4 w-4" />
+                      Thêm
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setIsImportDialogOpen(true)} disabled={!classes || classes.length === 0}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Import từ CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExportStudents} disabled={isExporting || !filteredStudents.length}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Xuất danh sách
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="gold" disabled={!classes || classes.length === 0}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Thêm học viên
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[600px]">
                   <DialogHeader>
                     <DialogTitle>Thêm học viên mới</DialogTitle>
                     <DialogDescription>
@@ -311,11 +425,20 @@ export default function Students() {
                       )}
                     </Button>
                   </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Import Dialog */}
+        <ImportStudentsDialog
+          open={isImportDialogOpen}
+          onOpenChange={setIsImportDialogOpen}
+          classes={classes || []}
+          onImport={handleImportStudents}
+        />
 
         {/* Results count */}
         <p className="text-sm text-muted-foreground">
