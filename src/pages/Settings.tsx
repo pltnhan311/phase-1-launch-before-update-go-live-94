@@ -27,11 +27,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useUsers, useUpdateUserRole, AppRole } from '@/hooks/useUsers';
-import { Users, Shield, Pencil, Loader2, UserPlus, GraduationCap } from 'lucide-react';
+import { Users, Shield, Pencil, Loader2, UserPlus, GraduationCap, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { ImportSetupDialog } from '@/components/settings/ImportSetupDialog';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function Settings() {
+  const queryClient = useQueryClient();
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const { data: users, isLoading } = useUsers();
   const updateRoleMutation = useUpdateUserRole();
   const [editingUser, setEditingUser] = useState<{ userId: string; currentRole: AppRole } | null>(null);
@@ -117,6 +121,22 @@ export default function Settings() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Quick Setup Button */}
+        <Card variant="elevated">
+          <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 md:p-6">
+            <div>
+              <h3 className="font-semibold">Setup nhanh niên khóa mới</h3>
+              <p className="text-sm text-muted-foreground">
+                Import niên khóa, lớp học và giáo lý viên từ file CSV
+              </p>
+            </div>
+            <Button onClick={() => setImportDialogOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import Setup
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Users Table */}
         <Card variant="elevated">
@@ -223,6 +243,18 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import Setup Dialog */}
+      <ImportSetupDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['academic-years'] });
+          queryClient.invalidateQueries({ queryKey: ['classes'] });
+          queryClient.invalidateQueries({ queryKey: ['catechists'] });
+          queryClient.invalidateQueries({ queryKey: ['users-with-roles'] });
+        }}
+      />
     </MainLayout>
   );
 }
