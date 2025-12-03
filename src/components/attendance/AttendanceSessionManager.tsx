@@ -45,7 +45,18 @@ export function AttendanceSessionManager({ classId, className }: AttendanceSessi
   const startSessionMutation = useMutation({
     mutationFn: async () => {
       const code = generateCode();
-      const today = new Date().toISOString().split('T')[0];
+      // Use local date to avoid timezone issues
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+      console.log('Creating session with:', { classId, date: today, code });
+
+      // First, deactivate any existing active sessions for this class
+      await supabase
+        .from('attendance_sessions')
+        .update({ is_active: false, ended_at: new Date().toISOString() })
+        .eq('class_id', classId)
+        .eq('is_active', true);
 
       const { data, error } = await supabase
         .from('attendance_sessions')
@@ -59,7 +70,12 @@ export function AttendanceSessionManager({ classId, className }: AttendanceSessi
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error creating session:', error);
+        throw error;
+      }
+      
+      console.log('Session created:', data);
       return data;
     },
     onSuccess: () => {

@@ -73,26 +73,6 @@ export default function StudentDashboard() {
     enabled: !!student?.class_id,
   });
 
-  // Get active attendance session to show code
-  const { data: activeSession } = useQuery({
-    queryKey: ['active-attendance-session', student?.class_id],
-    queryFn: async () => {
-      if (!student?.class_id) return null;
-
-      const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase
-        .from('attendance_sessions')
-        .select('*')
-        .eq('class_id', student.class_id)
-        .eq('is_active', true)
-        .eq('date', today)
-        .maybeSingle();
-
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!student?.class_id,
-  });
 
   // Get attendance stats
   const { data: attendanceStats } = useQuery({
@@ -231,34 +211,6 @@ export default function StudentDashboard() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Active Session Code Display */}
-        {activeSession && (
-          <Card variant="elevated" className="border-primary/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <QrCode className="h-5 w-5 text-primary" />
-                Mã điểm danh hiện tại
-              </CardTitle>
-              <CardDescription>
-                Mã này được tạo bởi Giáo lý viên. Nhập mã này vào form điểm danh bên dưới.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-center p-6 bg-background rounded-lg">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-2">Mã điểm danh hôm nay</p>
-                  <p className="text-5xl font-bold tracking-[0.5em] text-primary font-mono">
-                    {activeSession.check_in_code}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {format(new Date(activeSession.date), 'EEEE, dd/MM/yyyy', { locale: vi })}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Check-in Card */}
         {student.class_id && (
