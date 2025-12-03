@@ -132,7 +132,7 @@ export function useUpdateClass() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; name?: string; description?: string; schedule?: string }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; name?: string; description?: string; schedule?: string; academic_year_id?: string }) => {
       const { data, error } = await supabase
         .from('classes')
         .update(updates)

@@ -23,9 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useClasses, useCreateClass } from '@/hooks/useClasses';
+import { useClasses, useCreateClass, useUpdateClass, type ClassInfo } from '@/hooks/useClasses';
 import { useAcademicYears, useActiveAcademicYear } from '@/hooks/useAcademicYears';
-import { Plus, Users, Clock, UserCheck, ChevronRight, Loader2, Database } from 'lucide-react';
+import { Plus, Users, Clock, UserCheck, ChevronRight, Loader2, Database, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Classes() {
@@ -34,9 +34,18 @@ export default function Classes() {
   const { data: academicYears } = useAcademicYears();
   const { data: activeYear } = useActiveAcademicYear();
   const createClass = useCreateClass();
+  const updateClass = useUpdateClass();
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newClass, setNewClass] = useState({
+    name: '',
+    academic_year_id: '',
+    description: '',
+    schedule: ''
+  });
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassInfo | null>(null);
+  const [editClass, setEditClass] = useState({
     name: '',
     academic_year_id: '',
     description: '',
@@ -58,6 +67,39 @@ export default function Classes() {
       onSuccess: () => {
         setNewClass({ name: '', academic_year_id: '', description: '', schedule: '' });
         setIsDialogOpen(false);
+      }
+    });
+  };
+
+  const handleOpenEditClass = (cls: ClassInfo) => {
+    setEditingClass(cls);
+    setEditClass({
+      name: cls.name,
+      academic_year_id: cls.academic_year_id,
+      description: cls.description || '',
+      schedule: cls.schedule || ''
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateClass = async () => {
+    if (!editingClass) return;
+
+    if (!editClass.name || !editClass.academic_year_id) {
+      toast.error('Vui lòng điền đầy đủ thông tin bắt buộc');
+      return;
+    }
+
+    updateClass.mutate({
+      id: editingClass.id,
+      name: editClass.name,
+      academic_year_id: editClass.academic_year_id,
+      description: editClass.description || undefined,
+      schedule: editClass.schedule || undefined,
+    }, {
+      onSuccess: () => {
+        setIsEditDialogOpen(false);
+        setEditingClass(null);
       }
     });
   };
@@ -155,6 +197,98 @@ export default function Classes() {
           </Dialog>
         </div>
 
+        {/* Edit Class Dialog */}
+        <Dialog
+          open={isEditDialogOpen}
+          onOpenChange={(open) => {
+            setIsEditDialogOpen(open);
+            if (!open) {
+              setEditingClass(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Chỉnh sửa lớp học</DialogTitle>
+              <DialogDescription>
+                Cập nhật thông tin lớp học trong niên khóa.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="editClassName">Tên lớp *</Label>
+                <Input
+                  id="editClassName"
+                  placeholder="VD: Hiệp Sĩ 5"
+                  value={editClass.name}
+                  onChange={(e) => setEditClass({ ...editClass, name: e.target.value })}
+                  disabled={!editingClass}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editAcademicYear">Niên khóa *</Label>
+                <Select
+                  value={editClass.academic_year_id}
+                  onValueChange={(value) => setEditClass({ ...editClass, academic_year_id: value })}
+                  disabled={!editingClass}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn niên khóa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(academicYears || []).map(year => (
+                      <SelectItem key={year.id} value={year.id}>
+                        {year.name} {year.is_active && '(Đang hoạt động)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editSchedule">Lịch học</Label>
+                <Input
+                  id="editSchedule"
+                  placeholder="VD: Chủ nhật, 8:00 - 9:30"
+                  value={editClass.schedule}
+                  onChange={(e) => setEditClass({ ...editClass, schedule: e.target.value })}
+                  disabled={!editingClass}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editDescription">Mô tả</Label>
+                <Textarea
+                  id="editDescription"
+                  placeholder="Mô tả về lớp học..."
+                  value={editClass.description}
+                  onChange={(e) => setEditClass({ ...editClass, description: e.target.value })}
+                  disabled={!editingClass}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsEditDialogOpen(false);
+                  setEditingClass(null);
+                }}
+              >
+                Hủy
+              </Button>
+              <Button onClick={handleUpdateClass} disabled={updateClass.isPending || !editingClass}>
+                {updateClass.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Đang lưu...
+                  </>
+                ) : (
+                  'Lưu thay đổi'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Classes Grid */}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -181,7 +315,20 @@ export default function Classes() {
                         {cls.description || 'Không có mô tả'}
                       </CardDescription>
                     </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditClass(cls);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
