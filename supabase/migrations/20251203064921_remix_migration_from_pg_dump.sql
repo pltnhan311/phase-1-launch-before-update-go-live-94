@@ -82,31 +82,19 @@ CREATE FUNCTION public.handle_new_user() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-DECLARE
-  default_role app_role := 'glv';
 BEGIN
-  -- Insert into profiles
-  INSERT INTO public.profiles (user_id, name, email)
+  -- Insert into catechists (for users added via Cloud UI - default admin)
+  INSERT INTO public.catechists (user_id, name, email, is_active)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data ->> 'name', NEW.email),
-    NEW.email
+    NEW.email,
+    true
   );
   
-  -- Insert role
+  -- Insert into user_roles with role = admin (default for Cloud UI)
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, default_role);
-  
-  -- If role is glv or admin, also insert into catechists
-  IF default_role IN ('glv', 'admin') THEN
-    INSERT INTO public.catechists (user_id, name, email, is_active)
-    VALUES (
-      NEW.id,
-      COALESCE(NEW.raw_user_meta_data ->> 'name', NEW.email),
-      NEW.email,
-      true
-    );
-  END IF;
+  VALUES (NEW.id, 'admin');
   
   RETURN NEW;
 END;
@@ -294,25 +282,6 @@ CREATE TABLE public.mass_attendance (
 
 
 --
--- Name: profiles; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.profiles (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    user_id uuid NOT NULL,
-    name text NOT NULL,
-    email text,
-    phone text,
-    address text,
-    avatar_url text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    baptism_name text,
-    is_active boolean DEFAULT true
-);
-
-
---
 -- Name: scores; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -465,22 +434,6 @@ ALTER TABLE ONLY public.mass_attendance
 
 
 --
--- Name: profiles profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.profiles
-    ADD CONSTRAINT profiles_pkey PRIMARY KEY (id);
-
-
---
--- Name: profiles profiles_user_id_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.profiles
-    ADD CONSTRAINT profiles_user_id_key UNIQUE (user_id);
-
-
---
 -- Name: scores scores_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -561,13 +514,6 @@ CREATE TRIGGER update_classes_updated_at BEFORE UPDATE ON public.classes FOR EAC
 --
 
 CREATE TRIGGER update_learning_materials_updated_at BEFORE UPDATE ON public.learning_materials FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-
---
--- Name: profiles update_profiles_updated_at; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
@@ -678,14 +624,6 @@ ALTER TABLE ONLY public.mass_attendance
 
 ALTER TABLE ONLY public.mass_attendance
     ADD CONSTRAINT mass_attendance_student_id_fkey FOREIGN KEY (student_id) REFERENCES public.students(id) ON DELETE CASCADE;
-
-
---
--- Name: profiles profiles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.profiles
-    ADD CONSTRAINT profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 
 --
@@ -841,12 +779,26 @@ CREATE POLICY "GLV can manage students in their classes" ON public.students TO a
 
 
 --
--- Name: profiles Staff can manage GLV profiles; Type: POLICY; Schema: public; Owner: -
+-- Name: attendance_sessions Staff can create attendance sessions; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY "Staff can manage GLV profiles" ON public.profiles USING ((public.has_role(auth.uid(), 'admin'::public.app_role) OR (public.is_staff(auth.uid()) AND (EXISTS ( SELECT 1
+CREATE POLICY "Staff can create attendance sessions" ON public.attendance_sessions FOR INSERT TO authenticated WITH CHECK (public.is_staff(auth.uid()));
+
+
+--
+-- Name: attendance_sessions Staff can delete attendance sessions; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Staff can delete attendance sessions" ON public.attendance_sessions FOR DELETE TO authenticated USING (public.is_staff(auth.uid()));
+
+
+--
+-- Name: catechists Staff can manage GLV catechists; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Staff can manage GLV catechists" ON public.catechists TO authenticated USING ((public.has_role(auth.uid(), 'admin'::public.app_role) OR (public.is_staff(auth.uid()) AND (EXISTS ( SELECT 1
    FROM public.user_roles
-  WHERE ((user_roles.user_id = profiles.user_id) AND (user_roles.role = ANY (ARRAY['glv'::public.app_role, 'admin'::public.app_role]))))))));
+  WHERE ((user_roles.user_id = catechists.user_id) AND (user_roles.role = ANY (ARRAY['glv'::public.app_role, 'admin'::public.app_role]))))))));
 
 
 --
@@ -871,6 +823,13 @@ CREATE POLICY "Staff can manage scores" ON public.scores TO authenticated USING 
 
 
 --
+-- Name: attendance_sessions Staff can update attendance sessions; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Staff can update attendance sessions" ON public.attendance_sessions FOR UPDATE TO authenticated USING (public.is_staff(auth.uid()));
+
+
+--
 -- Name: attendance_records Staff can view all attendance; Type: POLICY; Schema: public; Owner: -
 --
 
@@ -878,17 +837,17 @@ CREATE POLICY "Staff can view all attendance" ON public.attendance_records FOR S
 
 
 --
+-- Name: attendance_sessions Staff can view all attendance sessions; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY "Staff can view all attendance sessions" ON public.attendance_sessions FOR SELECT TO authenticated USING (public.is_staff(auth.uid()));
+
+
+--
 -- Name: mass_attendance Staff can view all mass attendance; Type: POLICY; Schema: public; Owner: -
 --
 
 CREATE POLICY "Staff can view all mass attendance" ON public.mass_attendance FOR SELECT TO authenticated USING (public.is_staff(auth.uid()));
-
-
---
--- Name: profiles Staff can view all profiles; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Staff can view all profiles" ON public.profiles FOR SELECT TO authenticated USING (public.is_staff(auth.uid()));
 
 
 --
@@ -940,24 +899,10 @@ CREATE POLICY "Students can view themselves" ON public.students FOR SELECT TO au
 
 
 --
--- Name: profiles Users can insert their own profile; Type: POLICY; Schema: public; Owner: -
+-- Name: catechists Users can update own catechist; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY "Users can insert their own profile" ON public.profiles FOR INSERT TO authenticated WITH CHECK ((auth.uid() = user_id));
-
-
---
--- Name: profiles Users can update their own profile; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE TO authenticated USING ((auth.uid() = user_id));
-
-
---
--- Name: profiles Users can view their own profile; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Users can view their own profile" ON public.profiles FOR SELECT TO authenticated USING ((auth.uid() = user_id));
+CREATE POLICY "Users can update own catechist" ON public.catechists FOR UPDATE TO authenticated USING ((auth.uid() = user_id));
 
 
 --
@@ -1014,12 +959,6 @@ ALTER TABLE public.learning_materials ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.mass_attendance ENABLE ROW LEVEL SECURITY;
-
---
--- Name: profiles; Type: ROW SECURITY; Schema: public; Owner: -
---
-
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: scores; Type: ROW SECURITY; Schema: public; Owner: -
