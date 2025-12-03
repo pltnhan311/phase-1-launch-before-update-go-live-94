@@ -1,5 +1,4 @@
-import { format, startOfMonth, endOfMonth, eachWeekOfInterval, startOfWeek, endOfWeek, isSameMonth } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { format, startOfMonth, endOfMonth, eachWeekOfInterval, isSameMonth } from 'date-fns';
 
 export interface StudentCSVRow {
   stt: string;
@@ -120,11 +119,11 @@ export function getWeeksInMonth(year: number, month: number): Date[] {
   
   // Filter to only include Sundays that fall within the month
   return weeks.filter(sunday => {
-    return isSameMonth(sunday, start) || isSameMonth(endOfWeek(sunday, { weekStartsOn: 0 }), start);
+    return isSameMonth(sunday, start);
   });
 }
 
-// Generate attendance report CSV
+// Generate attendance report CSV (TL + GL only, no ĐIỂM column)
 export function generateAttendanceReportCSV(
   students: Array<{
     id: string;
@@ -149,23 +148,21 @@ export function generateAttendanceReportCSV(
   const monthName = format(new Date(year, month), 'MM/yyyy');
   
   // Build header
-  let header = `BẢNG ĐIỂM DANH + BẢNG ĐIỂM\nTHÁNG ${monthName}\nLớp: ${className}\n\n`;
+  let header = `BẢNG ĐIỂM DANH\nTHÁNG ${monthName}\nLớp: ${className}\n\n`;
   
-  // Column headers
+  // Column headers - only TL and GL
   const columnHeaders = ['TT', 'Tên Thánh', 'Họ và Tên'];
   sundays.forEach((sunday, index) => {
     const sundayLabel = `CN${index + 1}: ${format(sunday, 'dd/MM')}`;
     columnHeaders.push(sundayLabel);
-    columnHeaders.push(''); // For GL column (merged with TL header in visual)
-    columnHeaders.push(''); // For ĐIỂM column
+    columnHeaders.push(''); // For GL column
   });
   
-  // Sub-headers
+  // Sub-headers - only TL and GL (no ĐIỂM)
   const subHeaders = ['', '', ''];
   sundays.forEach(() => {
     subHeaders.push('TL');
     subHeaders.push('GL');
-    subHeaders.push('ĐIỂM');
   });
   
   // Build data rows
@@ -190,9 +187,6 @@ export function generateAttendanceReportCSV(
         r => r.student_id === student.id && r.date === sundayStr
       );
       row.push(attendRecord ? (attendRecord.status === 'present' || attendRecord.status === 'late' ? 'x' : '') : '');
-      
-      // ĐIỂM - Score (empty for now)
-      row.push('');
     });
     
     return row;
