@@ -167,6 +167,7 @@ export default function Students() {
   const handleImportStudents = async (importData: Array<StudentImportData & { class_id: string }>) => {
     let successCount = 0;
     let errorCount = 0;
+    const errors: string[] = [];
 
     for (const studentData of importData) {
       try {
@@ -190,14 +191,25 @@ export default function Students() {
 
         if (error) throw error;
 
-        // Create auth account
-        await supabase.functions.invoke('create-student-account', {
+        // Create auth account and wait for result
+        const { data: accountResult, error: accountError } = await supabase.functions.invoke('create-student-account', {
           body: { student_id: studentId, student_db_id: data.id }
         });
+
+        if (accountError) {
+          console.error('Edge function error:', accountError);
+          errors.push(`${studentData.name}: Không tạo được tài khoản`);
+        } else if (accountResult?.error) {
+          console.error('Account creation error:', accountResult.error);
+          errors.push(`${studentData.name}: ${accountResult.error}`);
+        } else {
+          console.log('Account created successfully for', studentId, accountResult);
+        }
 
         successCount++;
       } catch (error) {
         console.error('Error importing student:', error);
+        errors.push(`${studentData.name}: ${error instanceof Error ? error.message : 'Lỗi không xác định'}`);
         errorCount++;
       }
     }
@@ -209,8 +221,9 @@ export default function Students() {
     if (successCount > 0) {
       toast.success(`Đã import thành công ${successCount} học viên`);
     }
-    if (errorCount > 0) {
-      toast.error(`Lỗi khi import ${errorCount} học viên`);
+    if (errors.length > 0) {
+      console.error('Import errors:', errors);
+      toast.error(`Lỗi với ${errors.length} học viên. Xem console để biết chi tiết.`);
     }
   };
 

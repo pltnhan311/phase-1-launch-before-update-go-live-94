@@ -19,72 +19,137 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { mockClasses, mockStudents, mockAttendanceSessions, mockScores } from '@/data/mockData';
+import { useClasses } from '@/hooks/useClasses';
+import { useStudents } from '@/hooks/useStudents';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   BarChart3, 
   Users, 
   TrendingUp, 
   Church,
-  FileSpreadsheet,
-  Download
+  Download,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Reports() {
-  const [selectedClass, setSelectedClass] = useState<string>('1');
-  const [reportPeriod, setReportPeriod] = useState<string>('week');
+  const { data: classes, isLoading: classesLoading } = useClasses();
+  const { data: allStudents, isLoading: studentsLoading } = useStudents();
+  const [selectedClass, setSelectedClass] = useState<string>('');
 
-  const classStudents = mockStudents.filter(s => s.classId === selectedClass);
-  const selectedClassInfo = mockClasses.find(c => c.id === selectedClass);
+  const classStudents = selectedClass 
+    ? (allStudents || []).filter(s => s.class_id === selectedClass)
+    : [];
+  const selectedClassInfo = classes?.find(c => c.id === selectedClass);
 
-  // Mock attendance report data
+  // Fetch attendance records for selected class
+  const { data: attendanceRecords } = useQuery({
+    queryKey: ['attendance-records', selectedClass],
+    queryFn: async () => {
+      if (!selectedClass) return [];
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('class_id', selectedClass);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!selectedClass,
+  });
+
+  // Fetch mass attendance for students in class
+  const { data: massRecords } = useQuery({
+    queryKey: ['mass-attendance', selectedClass, classStudents.map(s => s.id)],
+    queryFn: async () => {
+      if (!classStudents.length) return [];
+      const { data, error } = await supabase
+        .from('mass_attendance')
+        .select('*')
+        .in('student_id', classStudents.map(s => s.id));
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: classStudents.length > 0,
+  });
+
+  // Fetch scores for selected class
+  const { data: scores } = useQuery({
+    queryKey: ['scores', selectedClass],
+    queryFn: async () => {
+      if (!selectedClass) return [];
+      const { data, error } = await supabase
+        .from('scores')
+        .select('*')
+        .eq('class_id', selectedClass);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!selectedClass,
+  });
+
+  // Calculate attendance report
   const attendanceReport = classStudents.map(student => {
-    const totalSessions = 12; // Mock: 12 weeks
-    const presentCount = Math.floor(Math.random() * 3) + 10; // 10-12 sessions attended
+    const studentRecords = (attendanceRecords || []).filter(r => r.student_id === student.id);
+    const totalSessions = studentRecords.length;
+    const presentCount = studentRecords.filter(r => r.status === 'present').length;
+    const lateCount = studentRecords.filter(r => r.status === 'late').length;
+    const absentCount = studentRecords.filter(r => r.status === 'absent').length;
+    
     return {
-      studentId: student.studentId,
+      studentId: student.student_id,
       name: student.name,
       totalSessions,
-      presentCount,
-      absentCount: totalSessions - presentCount,
-      attendanceRate: Math.round((presentCount / totalSessions) * 100)
+      presentCount: presentCount + lateCount,
+      absentCount,
+      attendanceRate: totalSessions > 0 ? Math.round(((presentCount + lateCount) / totalSessions) * 100) : 0
     };
   });
 
-  // Mock mass attendance data
+  // Calculate mass attendance report
   const massAttendanceReport = classStudents.map(student => {
-    const totalMasses = 12;
-    const attendedCount = Math.floor(Math.random() * 4) + 9;
+    const studentMass = (massRecords || []).filter(r => r.student_id === student.id);
+    const totalMasses = studentMass.length;
+    const attendedCount = studentMass.filter(r => r.attended).length;
+    
     return {
-      studentId: student.studentId,
+      studentId: student.student_id,
       name: student.name,
       totalMasses,
       attendedCount,
       missedCount: totalMasses - attendedCount,
-      attendanceRate: Math.round((attendedCount / totalMasses) * 100)
+      attendanceRate: totalMasses > 0 ? Math.round((attendedCount / totalMasses) * 100) : 0
     };
   });
 
-  // Mock score report
+  // Calculate score report
   const scoreReport = classStudents.map(student => {
-    const presentation = (Math.random() * 3 + 7).toFixed(1);
-    const semester1 = (Math.random() * 3 + 7).toFixed(1);
-    const avg = ((parseFloat(presentation) + parseFloat(semester1)) / 2).toFixed(1);
+    const studentScores = (scores || []).filter(s => s.student_id === student.id);
+    const presentationScore = studentScores.find(s => s.type === 'presentation');
+    const semester1Score = studentScores.find(s => s.type === 'semester1');
+    const semester2Score = studentScores.find(s => s.type === 'semester2');
+    
+    const scoreValues = [presentationScore?.score, semester1Score?.score, semester2Score?.score].filter(Boolean) as number[];
+    const average = scoreValues.length > 0 
+      ? scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length 
+      : 0;
+    
     return {
-      studentId: student.studentId,
+      studentId: student.student_id,
       name: student.name,
-      presentation: parseFloat(presentation),
-      semester1: parseFloat(semester1),
-      average: parseFloat(avg)
+      presentation: presentationScore?.score ?? null,
+      semester1: semester1Score?.score ?? null,
+      semester2: semester2Score?.score ?? null,
+      average: Number(average.toFixed(1))
     };
   });
 
   const handleExport = (type: string) => {
     toast.success(`Đang xuất báo cáo ${type}...`);
-    // In production, this would generate and download the file
   };
 
-  const getScoreBadge = (score: number) => {
+  const getScoreBadge = (score: number | null) => {
+    if (score === null) return <span className="text-muted-foreground">-</span>;
     if (score >= 8) return <Badge variant="success">{score}</Badge>;
     if (score >= 6.5) return <Badge variant="gold">{score}</Badge>;
     if (score >= 5) return <Badge variant="warning">{score}</Badge>;
@@ -99,15 +164,17 @@ export default function Reports() {
   };
 
   // Calculate summary stats
-  const avgAttendance = Math.round(
-    attendanceReport.reduce((sum, r) => sum + r.attendanceRate, 0) / attendanceReport.length
-  );
-  const avgMassAttendance = Math.round(
-    massAttendanceReport.reduce((sum, r) => sum + r.attendanceRate, 0) / massAttendanceReport.length
-  );
-  const avgScore = (
-    scoreReport.reduce((sum, r) => sum + r.average, 0) / scoreReport.length
-  ).toFixed(1);
+  const avgAttendance = attendanceReport.length > 0 
+    ? Math.round(attendanceReport.reduce((sum, r) => sum + r.attendanceRate, 0) / attendanceReport.length)
+    : 0;
+  const avgMassAttendance = massAttendanceReport.length > 0
+    ? Math.round(massAttendanceReport.reduce((sum, r) => sum + r.attendanceRate, 0) / massAttendanceReport.length)
+    : 0;
+  const avgScore = scoreReport.length > 0
+    ? (scoreReport.reduce((sum, r) => sum + r.average, 0) / scoreReport.length).toFixed(1)
+    : '0';
+
+  const isLoading = classesLoading || studentsLoading;
 
   return (
     <MainLayout 
@@ -115,73 +182,29 @@ export default function Reports() {
       subtitle="Thống kê chuyên cần, điểm danh lễ và điểm số"
     >
       <div className="space-y-6">
-        {/* Summary Stats */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Card variant="elevated">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-success/10">
-                <Users className="h-6 w-6 text-success" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">TB Chuyên cần</p>
-                <p className="text-2xl font-bold">{avgAttendance}%</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card variant="elevated">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                <Church className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">TB Tham dự lễ</p>
-                <p className="text-2xl font-bold">{avgMassAttendance}%</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card variant="gold">
-            <CardContent className="flex items-center gap-4 p-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
-                <TrendingUp className="h-6 w-6 text-accent" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">ĐTB lớp</p>
-                <p className="text-2xl font-bold">{avgScore}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         {/* Filters */}
         <Card variant="flat" className="border">
           <CardContent className="pt-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex gap-4">
                 <Select value={selectedClass} onValueChange={setSelectedClass}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue />
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Chọn lớp" />
                   </SelectTrigger>
                   <SelectContent>
-                    {mockClasses.map(cls => (
+                    {(classes || []).map(cls => (
                       <SelectItem key={cls.id} value={cls.id}>
                         {cls.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={reportPeriod} onValueChange={setReportPeriod}>
-                  <SelectTrigger className="w-[150px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="week">Tuần này</SelectItem>
-                    <SelectItem value="month">Tháng này</SelectItem>
-                    <SelectItem value="semester">Học kỳ</SelectItem>
-                    <SelectItem value="year">Cả năm</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
-              <Button variant="outline" onClick={() => handleExport('Excel')}>
+              <Button 
+                variant="outline" 
+                onClick={() => handleExport('Excel')}
+                disabled={!selectedClass}
+              >
                 <Download className="mr-2 h-4 w-4" />
                 Xuất Excel
               </Button>
@@ -189,145 +212,213 @@ export default function Reports() {
           </CardContent>
         </Card>
 
-        {/* Reports Tabs */}
-        <Tabs defaultValue="attendance" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
-            <TabsTrigger value="attendance">Chuyên cần</TabsTrigger>
-            <TabsTrigger value="mass">Tham dự lễ</TabsTrigger>
-            <TabsTrigger value="scores">Điểm số</TabsTrigger>
-          </TabsList>
+        {!selectedClass ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">Chọn lớp để xem báo cáo</p>
+            </CardContent>
+          </Card>
+        ) : isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            {/* Summary Stats */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <Card variant="elevated">
+                <CardContent className="flex items-center gap-4 p-6">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-success/10">
+                    <Users className="h-6 w-6 text-success" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">TB Chuyên cần</p>
+                    <p className="text-2xl font-bold">{avgAttendance}%</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card variant="elevated">
+                <CardContent className="flex items-center gap-4 p-6">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                    <Church className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">TB Tham dự lễ</p>
+                    <p className="text-2xl font-bold">{avgMassAttendance}%</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card variant="gold">
+                <CardContent className="flex items-center gap-4 p-6">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
+                    <TrendingUp className="h-6 w-6 text-accent" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">ĐTB lớp</p>
+                    <p className="text-2xl font-bold">{avgScore}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
-          {/* Attendance Report */}
-          <TabsContent value="attendance">
-            <Card variant="elevated">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Báo cáo chuyên cần - {selectedClassInfo?.name}
-                </CardTitle>
-                <CardDescription>
-                  Thống kê điểm danh giáo lý hằng tuần
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mã HV</TableHead>
-                      <TableHead>Họ và tên</TableHead>
-                      <TableHead className="text-center">Tổng buổi</TableHead>
-                      <TableHead className="text-center">Có mặt</TableHead>
-                      <TableHead className="text-center">Vắng</TableHead>
-                      <TableHead className="text-center">Tỷ lệ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {attendanceReport.map(row => (
-                      <TableRow key={row.studentId}>
-                        <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
-                        <TableCell className="font-medium">{row.name}</TableCell>
-                        <TableCell className="text-center">{row.totalSessions}</TableCell>
-                        <TableCell className="text-center text-success">{row.presentCount}</TableCell>
-                        <TableCell className="text-center text-destructive">{row.absentCount}</TableCell>
-                        <TableCell className="text-center">
-                          {getAttendanceBadge(row.attendanceRate)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
+            {/* Reports Tabs */}
+            <Tabs defaultValue="attendance" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+                <TabsTrigger value="attendance">Chuyên cần</TabsTrigger>
+                <TabsTrigger value="mass">Tham dự lễ</TabsTrigger>
+                <TabsTrigger value="scores">Điểm số</TabsTrigger>
+              </TabsList>
 
-          {/* Mass Attendance Report */}
-          <TabsContent value="mass">
-            <Card variant="elevated">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Church className="h-5 w-5" />
-                  Báo cáo tham dự Thánh lễ - {selectedClassInfo?.name}
-                </CardTitle>
-                <CardDescription>
-                  Thống kê tham dự Thánh lễ Chúa nhật
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mã HV</TableHead>
-                      <TableHead>Họ và tên</TableHead>
-                      <TableHead className="text-center">Tổng lễ</TableHead>
-                      <TableHead className="text-center">Tham dự</TableHead>
-                      <TableHead className="text-center">Vắng</TableHead>
-                      <TableHead className="text-center">Tỷ lệ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {massAttendanceReport.map(row => (
-                      <TableRow key={row.studentId}>
-                        <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
-                        <TableCell className="font-medium">{row.name}</TableCell>
-                        <TableCell className="text-center">{row.totalMasses}</TableCell>
-                        <TableCell className="text-center text-success">{row.attendedCount}</TableCell>
-                        <TableCell className="text-center text-destructive">{row.missedCount}</TableCell>
-                        <TableCell className="text-center">
-                          {getAttendanceBadge(row.attendanceRate)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              {/* Attendance Report */}
+              <TabsContent value="attendance">
+                <Card variant="elevated">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Báo cáo chuyên cần - {selectedClassInfo?.name}
+                    </CardTitle>
+                    <CardDescription>
+                      Thống kê điểm danh giáo lý
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {attendanceReport.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Mã HV</TableHead>
+                            <TableHead>Họ và tên</TableHead>
+                            <TableHead className="text-center">Tổng buổi</TableHead>
+                            <TableHead className="text-center">Có mặt</TableHead>
+                            <TableHead className="text-center">Vắng</TableHead>
+                            <TableHead className="text-center">Tỷ lệ</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {attendanceReport.map(row => (
+                            <TableRow key={row.studentId}>
+                              <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
+                              <TableCell className="font-medium">{row.name}</TableCell>
+                              <TableCell className="text-center">{row.totalSessions}</TableCell>
+                              <TableCell className="text-center text-success">{row.presentCount}</TableCell>
+                              <TableCell className="text-center text-destructive">{row.absentCount}</TableCell>
+                              <TableCell className="text-center">
+                                {row.totalSessions > 0 ? getAttendanceBadge(row.attendanceRate) : '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <p className="text-center text-muted-foreground py-8">Chưa có dữ liệu điểm danh</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-          {/* Score Report */}
-          <TabsContent value="scores">
-            <Card variant="elevated">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Báo cáo điểm số - {selectedClassInfo?.name}
-                </CardTitle>
-                <CardDescription>
-                  Tổng hợp điểm thuyết trình và học kỳ
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Mã HV</TableHead>
-                      <TableHead>Họ và tên</TableHead>
-                      <TableHead className="text-center">Thuyết trình</TableHead>
-                      <TableHead className="text-center">Học kỳ 1</TableHead>
-                      <TableHead className="text-center">ĐTB</TableHead>
-                      <TableHead className="text-center">Xếp loại</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {scoreReport.map(row => (
-                      <TableRow key={row.studentId}>
-                        <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
-                        <TableCell className="font-medium">{row.name}</TableCell>
-                        <TableCell className="text-center">{getScoreBadge(row.presentation)}</TableCell>
-                        <TableCell className="text-center">{getScoreBadge(row.semester1)}</TableCell>
-                        <TableCell className="text-center">{getScoreBadge(row.average)}</TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={row.average >= 8 ? 'success' : row.average >= 6.5 ? 'gold' : 'secondary'}>
-                            {row.average >= 8 ? 'Giỏi' : row.average >= 6.5 ? 'Khá' : 'TB'}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              {/* Mass Attendance Report */}
+              <TabsContent value="mass">
+                <Card variant="elevated">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Church className="h-5 w-5" />
+                      Báo cáo tham dự Thánh lễ - {selectedClassInfo?.name}
+                    </CardTitle>
+                    <CardDescription>
+                      Thống kê tham dự Thánh lễ Chúa nhật
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {massAttendanceReport.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Mã HV</TableHead>
+                            <TableHead>Họ và tên</TableHead>
+                            <TableHead className="text-center">Tổng lễ</TableHead>
+                            <TableHead className="text-center">Tham dự</TableHead>
+                            <TableHead className="text-center">Vắng</TableHead>
+                            <TableHead className="text-center">Tỷ lệ</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {massAttendanceReport.map(row => (
+                            <TableRow key={row.studentId}>
+                              <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
+                              <TableCell className="font-medium">{row.name}</TableCell>
+                              <TableCell className="text-center">{row.totalMasses}</TableCell>
+                              <TableCell className="text-center text-success">{row.attendedCount}</TableCell>
+                              <TableCell className="text-center text-destructive">{row.missedCount}</TableCell>
+                              <TableCell className="text-center">
+                                {row.totalMasses > 0 ? getAttendanceBadge(row.attendanceRate) : '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <p className="text-center text-muted-foreground py-8">Chưa có dữ liệu điểm danh lễ</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Score Report */}
+              <TabsContent value="scores">
+                <Card variant="elevated">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5" />
+                      Báo cáo điểm số - {selectedClassInfo?.name}
+                    </CardTitle>
+                    <CardDescription>
+                      Tổng hợp điểm thuyết trình và học kỳ
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {scoreReport.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Mã HV</TableHead>
+                            <TableHead>Họ và tên</TableHead>
+                            <TableHead className="text-center">Thuyết trình</TableHead>
+                            <TableHead className="text-center">Học kỳ 1</TableHead>
+                            <TableHead className="text-center">Học kỳ 2</TableHead>
+                            <TableHead className="text-center">ĐTB</TableHead>
+                            <TableHead className="text-center">Xếp loại</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {scoreReport.map(row => (
+                            <TableRow key={row.studentId}>
+                              <TableCell className="font-mono text-sm">{row.studentId}</TableCell>
+                              <TableCell className="font-medium">{row.name}</TableCell>
+                              <TableCell className="text-center">{getScoreBadge(row.presentation)}</TableCell>
+                              <TableCell className="text-center">{getScoreBadge(row.semester1)}</TableCell>
+                              <TableCell className="text-center">{getScoreBadge(row.semester2)}</TableCell>
+                              <TableCell className="text-center">{row.average > 0 ? getScoreBadge(row.average) : '-'}</TableCell>
+                              <TableCell className="text-center">
+                                {row.average > 0 ? (
+                                  <Badge variant={row.average >= 8 ? 'success' : row.average >= 6.5 ? 'gold' : 'secondary'}>
+                                    {row.average >= 8 ? 'Giỏi' : row.average >= 6.5 ? 'Khá' : 'TB'}
+                                  </Badge>
+                                ) : '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <p className="text-center text-muted-foreground py-8">Chưa có dữ liệu điểm số</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </>
+        )}
       </div>
     </MainLayout>
   );

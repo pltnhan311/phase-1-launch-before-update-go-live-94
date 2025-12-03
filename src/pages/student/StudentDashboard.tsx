@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { BookOpen, ClipboardCheck, Star, GraduationCap, Loader2 } from 'lucide-react';
+import { StudentCheckIn } from '@/components/student/StudentCheckIn';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
@@ -140,6 +141,11 @@ export default function StudentDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Check-in Card */}
+        {student.class_id && (
+          <StudentCheckIn studentId={student.id} classId={student.class_id} />
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
