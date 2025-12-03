@@ -23,8 +23,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useClasses } from '@/hooks/useClasses';
 import { useStudents } from '@/hooks/useStudents';
-import { Calendar, CheckCircle2, XCircle, Clock, AlertCircle, Save, Users, Church, Loader2, Database } from 'lucide-react';
+import { Calendar, CheckCircle2, XCircle, Clock, AlertCircle, Save, Users, Church, Loader2, Database, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { ExportAttendanceDialog } from '@/components/attendance/ExportAttendanceDialog';
 
 type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
@@ -55,6 +56,7 @@ export default function Attendance() {
 
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [massRecords, setMassRecords] = useState<MassRecord[]>([]);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
   const handleClassChange = (classId: string) => {
     setSelectedClass(classId);
@@ -154,34 +156,47 @@ export default function Attendance() {
       subtitle="Điểm danh Giáo lý và Thánh lễ"
     >
       <div className="space-y-6">
+        {/* Export Dialog */}
+        <ExportAttendanceDialog
+          open={isExportDialogOpen}
+          onOpenChange={setIsExportDialogOpen}
+          classes={classes || []}
+        />
+
         {/* Selection */}
         <Card variant="flat" className="border">
           <CardContent className="pt-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-end">
-              <div className="space-y-2 flex-1 max-w-xs">
-                <label className="text-sm font-medium">Chọn lớp</label>
-                <Select value={selectedClass} onValueChange={handleClassChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn lớp để điểm danh" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(classes || []).map(cls => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end flex-1">
+                <div className="space-y-2 flex-1 max-w-xs">
+                  <label className="text-sm font-medium">Chọn lớp</label>
+                  <Select value={selectedClass} onValueChange={handleClassChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn lớp để điểm danh" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(classes || []).map(cls => (
+                        <SelectItem key={cls.id} value={cls.id}>
+                          {cls.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 flex-1 max-w-xs">
+                  <label className="text-sm font-medium">Ngày</label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
               </div>
-              <div className="space-y-2 flex-1 max-w-xs">
-                <label className="text-sm font-medium">Ngày</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
+              <Button variant="outline" onClick={() => setIsExportDialogOpen(true)}>
+                <Download className="mr-2 h-4 w-4" />
+                Xuất báo cáo
+              </Button>
             </div>
           </CardContent>
         </Card>
