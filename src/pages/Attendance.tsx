@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,10 +24,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useClasses } from '@/hooks/useClasses';
 import { useStudents } from '@/hooks/useStudents';
 import { supabase } from '@/integrations/supabase/client';
-import { Calendar, CheckCircle2, XCircle, Clock, AlertCircle, Save, Users, Church, Loader2, Database, Download } from 'lucide-react';
+import { Calendar, CheckCircle2, XCircle, Clock, AlertCircle, Save, Users, Church, Loader2, Database, Download, History, QrCode } from 'lucide-react';
 import { toast } from 'sonner';
 import { ExportAttendanceDialog } from '@/components/attendance/ExportAttendanceDialog';
+import { AttendanceSessionManager } from '@/components/attendance/AttendanceSessionManager';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { vi } from 'date-fns/locale';
 
 type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
@@ -61,6 +65,43 @@ export default function Attendance() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [massRecords, setMassRecords] = useState<MassRecord[]>([]);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+
+  // Load saved attendance records from DB
+  const { data: savedAttendanceRecords, refetch: refetchAttendance } = useQuery({
+    queryKey: ['saved-attendance', selectedClass, selectedDate],
+    queryFn: async () => {
+      if (!selectedClass || !selectedDate) return [];
+      
+      const { data, error } = await supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('class_id', selectedClass)
+        .eq('date', selectedDate);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!selectedClass && !!selectedDate,
+  });
+
+  // Load saved mass attendance records from DB
+  const { data: savedMassRecords } = useQuery({
+    queryKey: ['saved-mass-attendance', selectedDate],
+    queryFn: async () => {
+      if (!selectedDate || !classStudents.length) return [];
+      
+      const studentIds = classStudents.map(s => s.id);
+      const { data, error } = await supabase
+        .from('mass_attendance')
+        .select('*')
+        .in('student_id', studentIds)
+        .eq('date', selectedDate);
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!selectedDate && classStudents.length > 0,
+  });
 
   const handleClassChange = (classId: string) => {
     setSelectedClass(classId);
@@ -138,7 +179,7 @@ export default function Attendance() {
         class_id: selectedClass,
         date: selectedDate,
         status: record.status,
-        note: record.note || null,
+        note: record.note || 'GLV', // Mark as GLV if no note provided
         recorded_by: user?.id || null,
       }));
 
@@ -150,6 +191,8 @@ export default function Attendance() {
 
       toast.success('Lưu điểm danh Giáo lý thành công!');
       setIsAttending(false);
+      // Reload saved records from DB
+      refetchAttendance();
     } catch (error) {
       console.error('Error saving attendance:', error);
       toast.error('Lỗi khi lưu điểm danh');
@@ -307,7 +350,7 @@ export default function Attendance() {
             <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
               <TabsTrigger value="catechism" className="flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
-                Giáo lý
+                Điểm danh trực tiếp
               </TabsTrigger>
               <TabsTrigger value="mass" className="flex items-center gap-2">
                 <Church className="h-4 w-4" />
@@ -364,10 +407,14 @@ export default function Attendance() {
                     <div>
                       <CardTitle className="flex items-center gap-2">
                         <Users className="h-5 w-5" />
-                        {selectedClassInfo?.name} - Điểm danh Giáo lý
+                        {selectedClassInfo?.name} - Điểm danh Giáo lý (Trực tiếp)
                       </CardTitle>
                       <CardDescription>
                         {selectedClassInfo?.schedule || 'Chưa xếp lịch'} • {classStudents.length} học viên
+                        <br />
+                        <span className="text-xs text-muted-foreground">
+                          Admin/Giáo viên điểm danh trực tiếp bằng cách check/uncheck
+                        </span>
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
@@ -406,44 +453,77 @@ export default function Attendance() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(isAttending ? attendanceRecords : classStudents.map(s => ({ studentId: s.id, studentName: s.name, status: 'present' as AttendanceStatus, note: '' }))).map((record, index) => {
-                        const student = classStudents.find(s => s.id === record.studentId);
+                      {classStudents.map((student, index) => {
+                        // Find saved record from DB
+                        const savedRecord = savedAttendanceRecords?.find(
+                          r => r.student_id === student.id
+                        );
+                        
+                        // Use saved record if exists and not currently editing, otherwise use local state
+                        const currentRecord = isAttending 
+                          ? attendanceRecords.find(r => r.studentId === student.id) || {
+                              studentId: student.id,
+                              studentName: student.name,
+                              status: savedRecord?.status as AttendanceStatus || 'present',
+                              note: savedRecord?.note || ''
+                            }
+                          : savedRecord ? {
+                              studentId: student.id,
+                              studentName: student.name,
+                              status: savedRecord.status as AttendanceStatus,
+                              note: savedRecord.note || ''
+                            } : {
+                              studentId: student.id,
+                              studentName: student.name,
+                              status: 'present' as AttendanceStatus,
+                              note: ''
+                            };
+
                         return (
-                          <TableRow key={record.studentId}>
+                          <TableRow key={student.id}>
                             <TableCell>{index + 1}</TableCell>
-                            <TableCell className="font-mono text-sm">{student?.student_id}</TableCell>
-                            <TableCell className="font-medium">{record.studentName}</TableCell>
+                            <TableCell className="font-mono text-sm">{student.student_id}</TableCell>
+                            <TableCell className="font-medium">{currentRecord.studentName}</TableCell>
                             <TableCell>
                               {isAttending ? (
                                 <div className="flex justify-center gap-2">
                                   <Button
                                     size="sm"
-                                    variant={record.status === 'present' ? 'success' : 'outline'}
-                                    onClick={() => handleStatusChange(record.studentId, 'present')}
+                                    variant={currentRecord.status === 'present' ? 'success' : 'outline'}
+                                    onClick={() => handleStatusChange(student.id, 'present')}
                                   >
                                     <CheckCircle2 className="h-4 w-4" />
                                   </Button>
                                   <Button
                                     size="sm"
-                                    variant={record.status === 'absent' ? 'destructive' : 'outline'}
-                                    onClick={() => handleStatusChange(record.studentId, 'absent')}
+                                    variant={currentRecord.status === 'absent' ? 'destructive' : 'outline'}
+                                    onClick={() => handleStatusChange(student.id, 'absent')}
                                   >
                                     <XCircle className="h-4 w-4" />
                                   </Button>
                                   <Button
                                     size="sm"
-                                    variant={record.status === 'late' ? 'gold' : 'outline'}
-                                    onClick={() => handleStatusChange(record.studentId, 'late')}
+                                    variant={currentRecord.status === 'late' ? 'gold' : 'outline'}
+                                    onClick={() => handleStatusChange(student.id, 'late')}
                                   >
                                     <Clock className="h-4 w-4" />
                                   </Button>
                                   <Button
                                     size="sm"
-                                    variant={record.status === 'excused' ? 'secondary' : 'outline'}
-                                    onClick={() => handleStatusChange(record.studentId, 'excused')}
+                                    variant={currentRecord.status === 'excused' ? 'secondary' : 'outline'}
+                                    onClick={() => handleStatusChange(student.id, 'excused')}
                                   >
                                     <AlertCircle className="h-4 w-4" />
                                   </Button>
+                                </div>
+                              ) : savedRecord ? (
+                                <div className="flex justify-center items-center gap-2">
+                                  {getStatusBadge(currentRecord.status)}
+                                  {savedRecord.note === 'GLV' && (
+                                    <Badge className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/50">
+                                      GLV
+                                    </Badge>
+                                  )}
                                 </div>
                               ) : (
                                 <div className="flex justify-center">
@@ -456,8 +536,8 @@ export default function Attendance() {
                                 <Textarea
                                   placeholder="Ghi chú..."
                                   className="min-h-[36px] resize-none"
-                                  value={record.note}
-                                  onChange={(e) => handleNoteChange(record.studentId, e.target.value)}
+                                  value={currentRecord.note}
+                                  onChange={(e) => handleNoteChange(student.id, e.target.value)}
                                 />
                               </TableCell>
                             )}
@@ -468,6 +548,73 @@ export default function Attendance() {
                   </Table>
                 </CardContent>
               </Card>
+
+              {/* Attendance History */}
+              {savedAttendanceRecords && savedAttendanceRecords.length > 0 && (
+                <Card variant="elevated">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <History className="h-5 w-5" />
+                      Lịch sử điểm danh đã lưu
+                    </CardTitle>
+                    <CardDescription>
+                      Tất cả các bản ghi điểm danh đã được lưu cho ngày {format(new Date(selectedDate), 'dd/MM/yyyy', { locale: vi })}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>STT</TableHead>
+                          <TableHead>Mã HV</TableHead>
+                          <TableHead>Họ và tên</TableHead>
+                          <TableHead>Trạng thái</TableHead>
+                          <TableHead>Ghi chú</TableHead>
+                          <TableHead>Thời gian</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {savedAttendanceRecords.map((record, index) => {
+                          const student = classStudents.find(s => s.id === record.student_id);
+                          const isSelfCheckIn = student?.user_id === record.recorded_by;
+                          return (
+                            <TableRow key={record.id}>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell className="font-mono text-sm">
+                                {student?.student_id || '-'}
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {student?.name || '-'}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {getStatusBadge(record.status as AttendanceStatus)}
+                                  {record.note === 'GLV' && (
+                                    <Badge className="bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/50">
+                                      GLV
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {record.note || '-'}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {format(new Date(record.created_at), 'HH:mm:ss', { locale: vi })}
+                                {isSelfCheckIn && (
+                                  <Badge variant="secondary" className="ml-2 text-xs">
+                                    Tự điểm danh
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             {/* Mass Attendance Tab */}

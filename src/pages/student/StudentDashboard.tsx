@@ -1,18 +1,19 @@
 import { MainLayout } from '@/components/layout/MainLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { BookOpen, ClipboardCheck, Star, GraduationCap, Loader2 } from 'lucide-react';
+import { BookOpen, ClipboardCheck, Star, GraduationCap, Loader2, Users, UserCheck, QrCode } from 'lucide-react';
 import { StudentCheckIn } from '@/components/student/StudentCheckIn';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { StatCard } from '@/components/dashboard/StatCard';
 
 export default function StudentDashboard() {
   const { user } = useAuth();
   const displayName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Học viên';
 
-  // Get student info
+  // Get student info with class details
   const { data: student, isLoading: studentLoading } = useQuery({
     queryKey: ['student-profile', user?.id],
     queryFn: async () => {
@@ -34,6 +35,44 @@ export default function StudentDashboard() {
     },
     enabled: !!user?.id,
   });
+
+  // Get class overview stats
+  const { data: classOverview } = useQuery({
+    queryKey: ['class-overview', student?.class_id],
+    queryFn: async () => {
+      if (!student?.class_id) return null;
+
+      const { data: classData, error: classError } = await supabase
+        .from('classes')
+        .select(`
+          *,
+          class_catechists (
+            id,
+            is_primary,
+            catechists (
+              id,
+              name
+            )
+          ),
+          students (count)
+        `)
+        .eq('id', student.class_id)
+        .maybeSingle();
+
+      if (classError) throw classError;
+
+      const studentCount = classData?.students?.[0]?.count || 0;
+      const catechists = classData?.class_catechists?.map((cc: any) => cc.catechists) || [];
+
+      return {
+        studentCount,
+        catechists,
+        catechistCount: catechists.length,
+      };
+    },
+    enabled: !!student?.class_id,
+  });
+
 
   // Get attendance stats
   const { data: attendanceStats } = useQuery({
@@ -110,6 +149,37 @@ export default function StudentDashboard() {
   return (
     <MainLayout title={`Xin chào, ${displayName}`} subtitle="Trang chủ học viên">
       <div className="space-y-6">
+        {/* Overview Stats */}
+        {classInfo && (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard 
+              title="Lớp học" 
+              value={classInfo.name || '-'} 
+              subtitle={classInfo.academic_years?.name || 'Chưa có niên khóa'} 
+              icon={GraduationCap} 
+            />
+            <StatCard 
+              title="Học viên trong lớp" 
+              value={classOverview?.studentCount || 0} 
+              subtitle="Tổng số học viên" 
+              icon={Users} 
+            />
+            <StatCard 
+              title="Giáo lý viên" 
+              value={classOverview?.catechistCount || 0} 
+              subtitle="Đang phụ trách" 
+              icon={UserCheck} 
+            />
+            <StatCard 
+              title="Tỷ lệ điểm danh" 
+              value={`${attendanceStats?.rate || 0}%`} 
+              subtitle="Chuyên cần" 
+              icon={ClipboardCheck} 
+              variant="gold"
+            />
+          </div>
+        )}
+
         {/* Student Info Card */}
         <Card variant="gold">
           <CardContent className="p-6">
@@ -217,19 +287,48 @@ export default function StudentDashboard() {
           </CardContent>
         </Card>
 
-        {/* Class Schedule */}
-        {classInfo?.schedule && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-primary" />
-                Lịch học
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">{classInfo.schedule}</p>
-            </CardContent>
-          </Card>
+        {/* Class Overview */}
+        {classInfo && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Class Schedule */}
+            {classInfo.schedule && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-primary" />
+                    Lịch học
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground">{classInfo.schedule}</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Catechists */}
+            {classOverview && classOverview.catechists.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <UserCheck className="h-5 w-5 text-primary" />
+                    Giáo lý viên phụ trách
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {classOverview.catechists.map((cat: any) => (
+                      <div key={cat.id} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+                          {cat.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-medium">{cat.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
       </div>
     </MainLayout>

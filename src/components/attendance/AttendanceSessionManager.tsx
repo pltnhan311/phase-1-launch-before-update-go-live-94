@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { QrCode, Loader2, Copy, Check, StopCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, isSunday, previousSunday, startOfDay } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
 interface AttendanceSessionManagerProps {
@@ -41,17 +41,35 @@ export function AttendanceSessionManager({ classId, className }: AttendanceSessi
     return Math.floor(100000 + Math.random() * 900000).toString();
   };
 
+  // Helper to get the nearest past Sunday (or today if it's Sunday)
+  const getNearestSunday = () => {
+    const today = startOfDay(new Date());
+    if (isSunday(today)) {
+      return format(today, 'yyyy-MM-dd');
+    }
+    return format(previousSunday(today), 'yyyy-MM-dd');
+  };
+
   // Start session mutation
   const startSessionMutation = useMutation({
     mutationFn: async () => {
       const code = generateCode();
-      const today = new Date().toISOString().split('T')[0];
+      const sessionDate = getNearestSunday();
+
+      console.log('Creating session with:', { classId, date: sessionDate, code });
+
+      // First, deactivate any existing active sessions for this class
+      await supabase
+        .from('attendance_sessions')
+        .update({ is_active: false, ended_at: new Date().toISOString() })
+        .eq('class_id', classId)
+        .eq('is_active', true);
 
       const { data, error } = await supabase
         .from('attendance_sessions')
         .insert({
           class_id: classId,
-          date: today,
+          date: sessionDate,
           check_in_code: code,
           is_active: true,
           created_by: user?.id,
@@ -59,7 +77,12 @@ export function AttendanceSessionManager({ classId, className }: AttendanceSessi
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error creating session:', error);
+        throw error;
+      }
+
+      console.log('Session created:', data);
       return data;
     },
     onSuccess: () => {
@@ -140,7 +163,7 @@ export function AttendanceSessionManager({ classId, className }: AttendanceSessi
               </p>
             </div>
           </div>
-          
+
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -175,7 +198,7 @@ export function AttendanceSessionManager({ classId, className }: AttendanceSessi
               )}
             </Button>
           </div>
-          
+
           <p className="text-xs text-center text-muted-foreground">
             Học viên nhập mã này trong app để điểm danh
           </p>

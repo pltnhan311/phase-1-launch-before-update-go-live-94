@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export interface LearningMaterial {
   id: string;
@@ -23,43 +23,49 @@ export interface LearningMaterial {
 
 export function useLearningMaterials(classId?: string) {
   return useQuery({
-    queryKey: ['learning-materials', classId],
+    queryKey: ["learning-materials", classId],
     queryFn: async () => {
       let query = supabase
-        .from('learning_materials')
-        .select(`
+        .from("learning_materials")
+        .select(
+          `
           *,
           classes(name)
-        `)
-        .order('created_at', { ascending: false });
+        `
+        )
+        .order("created_at", { ascending: false });
 
-      if (classId && classId !== 'all') {
-        query = query.eq('class_id', classId);
+      if (classId && classId !== "all") {
+        query = query.eq("class_id", classId);
       }
 
       const { data, error } = await query;
 
       if (error) throw error;
-      
+
       // Fetch uploader names separately
-      const uploaderIds = [...new Set(data?.map(m => m.uploaded_by).filter(Boolean))];
+      const uploaderIds = [
+        ...new Set(data?.map((m) => m.uploaded_by).filter(Boolean)),
+      ];
       let uploaderMap: Record<string, string> = {};
-      
+
       if (uploaderIds.length > 0) {
         const { data: catechists } = await supabase
-          .from('catechists')
-          .select('user_id, name')
-          .in('user_id', uploaderIds);
-        
+          .from("catechists")
+          .select("user_id, name")
+          .in("user_id", uploaderIds);
+
         uploaderMap = (catechists || []).reduce((acc, c) => {
           if (c.user_id) acc[c.user_id] = c.name;
           return acc;
         }, {} as Record<string, string>);
       }
 
-      return (data || []).map(m => ({
+      return (data || []).map((m) => ({
         ...m,
-        uploader: m.uploaded_by ? { name: uploaderMap[m.uploaded_by] || 'N/A' } : undefined
+        uploader: m.uploaded_by
+          ? { name: uploaderMap[m.uploaded_by] || "N/A" }
+          : undefined,
       })) as LearningMaterial[];
     },
   });
@@ -83,34 +89,83 @@ export function useUploadMaterial() {
       week?: number;
     }) => {
       // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Chưa đăng nhập');
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Chưa đăng nhập");
 
       // Upload file to storage
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "";
+      const fileName = `${user.id}/${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(7)}.${fileExt}`;
       
-      const { error: uploadError } = await supabase.storage
-        .from('learning-materials')
-        .upload(fileName, file);
+      // Detect file type
+      const fileType = fileExt === "docx" || fileExt === "doc" ? "docx" : "pdf";
 
-      if (uploadError) throw uploadError;
+      // Try different bucket name variations - Supabase bucket names are case-sensitive
+      // Try learning_materials first (with underscore), then learning-materials (with dash)
+      let bucketName = "learning_materials";
+      let uploadError = null;
+      
+      // Try with underscore first
+      let result = await supabase.storage
+        .from(bucketName)
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+      
+      uploadError = result.error;
+      
+      // If that fails, try with dash
+      if (uploadError && (uploadError.message?.includes("not found") || uploadError.message?.includes("Bucket"))) {
+        bucketName = "learning-materials";
+        result = await supabase.storage
+          .from(bucketName)
+          .upload(fileName, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+        uploadError = result.error;
+      }
+
+      if (uploadError) {
+        console.error("Upload error details:", uploadError);
+        // Check if bucket exists
+        const { data: buckets } = await supabase.storage.listBuckets();
+        const availableBuckets = buckets?.map((b) => b.name) || [];
+        const bucketExists = availableBuckets.some((name) => 
+          name === "learning_materials" || 
+          name === "learning-materials" || 
+          name === "LEARNING_MATERIALS"
+        );
+        
+        if (!bucketExists) {
+          throw new Error(
+            `Bucket "learning_materials" hoặc "learning-materials" không tồn tại. ` +
+            `Các bucket hiện có: ${availableBuckets.join(", ") || "không có"}. ` +
+            `Vui lòng tạo bucket trong Supabase Storage Dashboard.`
+          );
+        }
+        throw uploadError;
+      }
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('learning-materials')
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(bucketName).getPublicUrl(fileName);
 
       // Insert record into database
       const { data, error } = await supabase
-        .from('learning_materials')
+        .from("learning_materials")
         .insert({
           title,
           description: description || null,
           class_id: classId,
           week: week || null,
           file_url: publicUrl,
-          file_type: 'pdf',
+          file_type: fileType,
           uploaded_by: user.id,
         })
         .select()
@@ -120,12 +175,12 @@ export function useUploadMaterial() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['learning-materials'] });
-      toast.success('Upload tài liệu thành công!');
+      queryClient.invalidateQueries({ queryKey: ["learning-materials"] });
+      toast.success("Upload tài liệu thành công!");
     },
     onError: (error: Error) => {
-      console.error('Upload error:', error);
-      toast.error('Lỗi upload: ' + error.message);
+      console.error("Upload error:", error);
+      toast.error("Lỗi upload: " + error.message);
     },
   });
 }
@@ -137,28 +192,55 @@ export function useDeleteMaterial() {
     mutationFn: async (material: LearningMaterial) => {
       // Delete file from storage if exists
       if (material.file_url) {
-        const urlParts = material.file_url.split('/learning-materials/');
-        if (urlParts[1]) {
-          await supabase.storage
-            .from('learning-materials')
-            .remove([urlParts[1]]);
+        // Try to detect bucket name from URL
+        let filePath = null;
+        let bucketName = "learning_materials";
+        
+        // Try with underscore first
+        const urlParts1 = material.file_url.split("/learning_materials/");
+        if (urlParts1[1]) {
+          filePath = urlParts1[1];
+          bucketName = "learning_materials";
+        } else {
+          // Try with dash
+          const urlParts2 = material.file_url.split("/learning-materials/");
+          if (urlParts2[1]) {
+            filePath = urlParts2[1];
+            bucketName = "learning-materials";
+          }
+        }
+        
+        if (filePath) {
+          const { error: deleteError } = await supabase.storage
+            .from(bucketName)
+            .remove([filePath]);
+          
+          // If delete fails with one bucket name, try the other
+          if (deleteError && deleteError.message?.includes("not found")) {
+            const altBucketName = bucketName === "learning_materials" 
+              ? "learning-materials" 
+              : "learning_materials";
+            await supabase.storage
+              .from(altBucketName)
+              .remove([filePath]);
+          }
         }
       }
 
       // Delete record from database
       const { error } = await supabase
-        .from('learning_materials')
+        .from("learning_materials")
         .delete()
-        .eq('id', material.id);
+        .eq("id", material.id);
 
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['learning-materials'] });
-      toast.success('Đã xóa tài liệu');
+      queryClient.invalidateQueries({ queryKey: ["learning-materials"] });
+      toast.success("Đã xóa tài liệu");
     },
     onError: (error: Error) => {
-      toast.error('Lỗi xóa tài liệu: ' + error.message);
+      toast.error("Lỗi xóa tài liệu: " + error.message);
     },
   });
 }
