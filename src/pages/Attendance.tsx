@@ -71,7 +71,7 @@ export default function Attendance() {
     queryKey: ['saved-attendance', selectedClass, selectedDate],
     queryFn: async () => {
       if (!selectedClass || !selectedDate) return [];
-      
+
       const { data, error } = await supabase
         .from('attendance_records')
         .select('*')
@@ -89,7 +89,7 @@ export default function Attendance() {
     queryKey: ['saved-mass-attendance', selectedDate],
     queryFn: async () => {
       if (!selectedDate || !classStudents.length) return [];
-      
+
       const studentIds = classStudents.map(s => s.id);
       const { data, error } = await supabase
         .from('mass_attendance')
@@ -271,8 +271,8 @@ export default function Attendance() {
   const isLoading = classesLoading || studentsLoading;
 
   return (
-    <MainLayout 
-      title="Điểm danh" 
+    <MainLayout
+      title="Điểm danh"
       subtitle="Điểm danh Giáo lý và Thánh lễ"
     >
       <div className="space-y-6">
@@ -458,26 +458,26 @@ export default function Attendance() {
                         const savedRecord = savedAttendanceRecords?.find(
                           r => r.student_id === student.id
                         );
-                        
+
                         // Use saved record if exists and not currently editing, otherwise use local state
-                        const currentRecord = isAttending 
+                        const currentRecord = isAttending
                           ? attendanceRecords.find(r => r.studentId === student.id) || {
-                              studentId: student.id,
-                              studentName: student.name,
-                              status: savedRecord?.status as AttendanceStatus || 'present',
-                              note: savedRecord?.note || ''
-                            }
+                            studentId: student.id,
+                            studentName: student.name,
+                            status: savedRecord?.status as AttendanceStatus || 'present',
+                            note: savedRecord?.note || ''
+                          }
                           : savedRecord ? {
-                              studentId: student.id,
-                              studentName: student.name,
-                              status: savedRecord.status as AttendanceStatus,
-                              note: savedRecord.note || ''
-                            } : {
-                              studentId: student.id,
-                              studentName: student.name,
-                              status: 'present' as AttendanceStatus,
-                              note: ''
-                            };
+                            studentId: student.id,
+                            studentName: student.name,
+                            status: savedRecord.status as AttendanceStatus,
+                            note: savedRecord.note || ''
+                          } : {
+                            studentId: student.id,
+                            studentName: student.name,
+                            status: 'present' as AttendanceStatus,
+                            note: ''
+                          };
 
                         return (
                           <TableRow key={student.id}>
@@ -569,14 +569,12 @@ export default function Attendance() {
                           <TableHead>Mã HV</TableHead>
                           <TableHead>Họ và tên</TableHead>
                           <TableHead>Trạng thái</TableHead>
-                          <TableHead>Ghi chú</TableHead>
                           <TableHead>Thời gian</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {savedAttendanceRecords.map((record, index) => {
                           const student = classStudents.find(s => s.id === record.student_id);
-                          const isSelfCheckIn = student?.user_id === record.recorded_by;
                           return (
                             <TableRow key={record.id}>
                               <TableCell>{index + 1}</TableCell>
@@ -597,15 +595,7 @@ export default function Attendance() {
                                 </div>
                               </TableCell>
                               <TableCell className="text-sm text-muted-foreground">
-                                {record.note || '-'}
-                              </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">
                                 {format(new Date(record.created_at), 'HH:mm:ss', { locale: vi })}
-                                {isSelfCheckIn && (
-                                  <Badge variant="secondary" className="ml-2 text-xs">
-                                    Tự điểm danh
-                                  </Badge>
-                                )}
                               </TableCell>
                             </TableRow>
                           );
